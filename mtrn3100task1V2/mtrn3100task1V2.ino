@@ -106,8 +106,8 @@ void turnTo(float targetYaw, bool leftTurn) {
 
 float angleDiff(float targetAngle, float currentAngle) {
   float error = targetAngle - currentAngle;
-  while (error > 180.0) e -= 360.0;
-  while (error < -180.0) e += 360.0;
+  while (error > 180.0) error -= 360.0;
+  while (error < -180.0) error += 360.0;
   return error;
 }
 
