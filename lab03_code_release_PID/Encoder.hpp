@@ -11,56 +11,66 @@ namespace mtrn3100 {
 // The count is stored as a volatile variable due to the high frequency updates. 
 class Encoder {
 public:
-    Encoder(uint8_t enc1, uint8_t enc2) : encoder1_pin(enc1), encoder2_pin(enc2) {
-        instance = this;  // Store the instance pointer
-        pinMode(encoder1_pin, INPUT_PULLUP); // Encoder A channel
-        pinMode(encoder2_pin, INPUT_PULLUP); // Encoder B channel
-        attachInterrupt(digitalPinToInterrupt(encoder1_pin), readEncoderISR, RISING);
+  Encoder(uint8_t enc1, uint8_t enc2, bool reversed = false) : encoder1_pin(enc1), encoder2_pin(enc2), reversed(reversed) {
+    pinMode(encoder1_pin, INPUT_PULLUP); // Encoder A channel
+    pinMode(encoder2_pin, INPUT_PULLUP); // Encoder B channel
+    
+    if (instance1 == nullptr) {
+      instance1 = this;
+      attachInterrupt(digitalPinToInterrupt(encoder1_pin), readEncoderISR1, RISING);
+    } else if (instance2 == nullptr) {
+      instance2 = this;
+      attachInterrupt(digitalPinToInterrupt(encoder1_pin), readEncoderISR2, RISING);
     }
+  }
 
 
-    // Encoder function used to update the encoder
-    void readEncoder() {
-        noInterrupts();
+  // Encoder function used to update the encoder
+  void readEncoder() {
+    noInterrupts();
 
-        // NOTE: DO NOT PLACE SERIAL PRINT STATEMENTS IN THIS FUNCTION
-        // NOTE: DO NOT CALL THIS FUNCTION MANUALLY IT WILL ONLY WORK IF CALLED BY THE INTERRUPT
-        // TODO: Increase or Decrease the count by one based on the reading on encoder pin 2
-        if (digitalRead(encoder2_pin)) {
-            count--;
-        }
-        else {
-            count++;
-        }
-        interrupts();
+    // NOTE: DO NOT PLACE SERIAL PRINT STATEMENTS IN THIS FUNCTION
+    // NOTE: DO NOT CALL THIS FUNCTION MANUALLY IT WILL ONLY WORK IF CALLED BY THE INTERRUPT
+    // TODO: Increase or Decrease the count by one based on the reading on encoder pin 2
+    if (digitalRead(encoder2_pin) ^ reversed) {
+        count--;
     }
-
-    // Helper function which to convert encouder count to radians
-    float getRotation() {
-        return float(count) * 2 * PI / counts_per_revolution;  // see if this is the best way to convert or not. 
+    else {
+        count++;
     }
+    interrupts();
+  }
+
+  // Helper function which to convert encouder count to radians
+  float getRotation() {
+    return float(count) * 2 * PI / counts_per_revolution;  // see if this is the best way to convert or not. 
+  }
 
 private:
-    static void readEncoderISR() {
-        if (instance != nullptr) {
-            instance->readEncoder();
-        }
-    }
+  static void readEncoderISR1() {
+    if (instance1 != nullptr) instance1->readEncoder();
+  }
+  static void readEncoderISR2() {
+    if (instance2 != nullptr) instance2->readEncoder();
+  }
 
 public:
-    const uint8_t encoder1_pin;
-    const uint8_t encoder2_pin;
-    volatile int8_t direction;
-    float position = 0;
-    uint16_t counts_per_revolution = 700; //TODO: Identify how many encoder counts are in one rotation
-    volatile long count = 0;
-    uint32_t prev_time;
-    bool read = false;
+  const uint8_t encoder1_pin;
+  const uint8_t encoder2_pin;
+  volatile int8_t direction;
+  float position = 0;
+  uint16_t counts_per_revolution = 700; //TODO: Identify how many encoder counts are in one rotation
+  volatile long count = 0;
+  uint32_t prev_time;
+  bool read = false;
 
 private:
-    static Encoder* instance;
+  bool reversed;
+  static Encoder* instance1;
+  static Encoder* instance2;
 };
 
-Encoder* Encoder::instance = nullptr;
+Encoder* Encoder::instance1 = nullptr;
+Encoder* Encoder::instance2 = nullptr;
 
 }  // namespace mtrn3100
