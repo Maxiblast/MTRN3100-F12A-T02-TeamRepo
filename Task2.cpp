@@ -1,6 +1,6 @@
  #include <iostream>
  #include <string>
-#include "mtrn3100task1V2.h"
+#include "mtrn3100task1V2.ino"
 
 //  int baseSpeed = 70;        
 // float Kp = 3.0;            
@@ -20,7 +20,7 @@ void loop() {
   unsigned long elapsed = millis() - startTime;
 
   if (elapsed >= driveTimeMs || elapsed >= maxRunTimeMs) {
-    //stop();
+    stop();
     Serial.println("Finished straight-line run.");
         while (true) { 
         }
@@ -88,4 +88,9 @@ void loop() {
                 break;
         }
     }  
+}
+
+void stop() {
+    analogWrite(M1_ENABLE, 0);
+    analogWrite(M1_ENABLE, 0);
 }
