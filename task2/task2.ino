@@ -1,6 +1,7 @@
 #include "Encoder.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
+#include "task2_missions.hpp"
 
 //Motors 
 #define MOT1PWM 11
