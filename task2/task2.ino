@@ -2,6 +2,8 @@
 #include "Motor.hpp"
 #include "PIDController.hpp"
 #include "task2_missions.hpp"
+#include "VL6180X.h"
+#include "Wire.h"
 
 //Motors 
 #define MOT1PWM 11
@@ -28,6 +30,14 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 #define DISTANCE_BETWEEN_WHEELS 85.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
+//lidar
+VL6180X frontlidar;
+Wire.begin();
+frontlidar.init();
+frontLidar.configureDefault();
+frontLidar.setTimeout(500);
+
+//when more lidars added we need to also add a .setAddress 
 
 
 void setup() {
