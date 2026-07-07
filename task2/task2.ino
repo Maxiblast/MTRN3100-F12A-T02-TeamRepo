@@ -1,4 +1,6 @@
 //Constants
+#define MOVEDIST 180
+
 //Motors 
 #define MOT1PWM 11
 #define MOT1DIR 12
@@ -50,7 +52,7 @@ void chainMovements(String commandLetter) {
     for (char command : commandLetter) {
         switch (command) {
             case 'f':
-                driveForward(200);
+                driveForward(MOVEDIST);
                 delay(1000);   
                 break;
             case 'l':
@@ -62,7 +64,7 @@ void chainMovements(String commandLetter) {
                 delay(1000);
                 break;
             case 'b':
-                driveForward(-200);
+                driveForward(-MOVEDIST);
                 delay(1000);
                 break;
         }
