@@ -1,7 +1,6 @@
 #include "Encoder.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
-#include "task2_missions.hpp"
 #include "VL6180X.h"
 #include "Wire.h"
 
@@ -32,16 +31,20 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 //lidar
 VL6180X frontlidar;
-Wire.begin();
-frontlidar.init();
-frontLidar.configureDefault();
-frontLidar.setTimeout(500);
+#include "task2_missions.hpp"
 
 //when more lidars added we need to also add a .setAddress 
 
 
 void setup() {
   Serial.begin(9600);
+  
+  //lidar things
+  Wire.begin();
+  frontlidar.init();
+  frontlidar.configureDefault();
+  frontlidar.setTimeout(500);
+
 }
 
 void loop() {

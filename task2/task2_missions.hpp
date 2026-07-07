@@ -1,7 +1,7 @@
 #pragma once
 
-#include <iostream>
-#include <string>
+//#include <iostream>
+// #include <string>
 
 void straightLineTracking(int targetDistance = 1) {
 
@@ -24,7 +24,7 @@ void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
     wallPID.zeroAndSetTarget(0, targetDistanceMm);
 
     while (true) {
-        if (frontlidar.timeoutOccured()) {
+        if (frontlidar.timeoutOccurred()) {
             continue;
         };
 
