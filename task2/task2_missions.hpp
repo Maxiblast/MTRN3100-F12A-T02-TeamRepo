@@ -14,17 +14,12 @@ void straightLineTracking(int targetDistance = 1) {
 
 void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
 
-/* Track lidar distance by a loop
-    Error = currentLidar - targetDistacneMm (not sure)
-    Drive forward if error is positive and backwards if error is negative
-    Make sure to reach the desired state in 10 seconds
-    */
-
     static mtrn3100::PIDController wallPID(1.5,0.0,0.3);
     wallPID.zeroAndSetTarget(0, targetDistanceMm);
 
     while (true) {
         if (frontlidar.timeoutOccurred()) {
+            Serial.println("Lidar timeout!");
             continue;
         };
 
@@ -32,7 +27,15 @@ void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
 
         int pwm = -wallPID.compute(currentDistance);
 
-        motor1.setPWM(pwm);
+        //debug
+        // Serial.print("Lidar (mm): ");
+        // Serial.print(currentDistance);
+        // Serial.print(" | Error: ");
+        // Serial.print(wallPID.getError());
+        // Serial.print(" | PWM: ");
+        // Serial.println(pwm);
+
+        motor1.setPWM(-pwm);
         motor2.setPWM(pwm);
 
         if (fabs(wallPID.getError()) <= toleranceMm) {
@@ -50,22 +53,22 @@ void turnImplementation() {
 
 }
 
-void chainMovements(const std::string commandLetter) {
+// void chainMovements(const std::string commandLetter) {
 
-// Implement each letter logic for robot movement
-for (char command : commandLetter) {
-    switch (command) {
-        case 'f':
+// // Implement each letter logic for robot movement
+// for (char command : commandLetter) {
+//     switch (command) {
+//         case 'f':
 
-            break;
+//             break;
         
-        case 'l':
+//         case 'l':
 
-            break;
+//             break;
 
-        case 'r':
+//         case 'r':
         
-            break;
-    }
-}  
-}
+//             break;
+//     }
+// }  
+// }

@@ -45,9 +45,10 @@ void setup() {
   frontlidar.configureDefault();
   frontlidar.setTimeout(500);
 
+  maintainWallDistance();
 }
 
 void loop() {
-
+ 
 }
 
