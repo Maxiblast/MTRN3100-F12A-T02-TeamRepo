@@ -32,6 +32,7 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 void setup() {
   Serial.begin(9600);
+  chainMovements("FFRFLF"); 
 }
 
 void loop() {
