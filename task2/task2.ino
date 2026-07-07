@@ -2,6 +2,8 @@
 #include "Motor.hpp"
 #include "PIDController.hpp"
 #include "task2_missions.hpp"
+#include <Wire.h>
+#include <MPU6050_light.h>
 
 //Motors 
 #define MOT1PWM 11
@@ -28,31 +30,24 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 #define DISTANCE_BETWEEN_WHEELS 85.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
-float refYaw = 0;
-float integralError = 0;
-unsigned long startTime = 0;
+
 
 void setup() {
   Serial.begin(9600);
-
-  float refYaw = 0; // for straight line tracking
+  Wire.begin();
+  mpu.begin();
+  Serial.println("Calibrating IMU, keep still...");
+  delay(2000);
+  mpu.calcOffsets();
+  delay(1000);
+  mpu.update();
+  refYaw = mpu.getAngleZ();
+  Serial.println("Done");
 }
 
 void loop() {
-  mpu.update();
-  float currYaw = mpu.getAngleZ();
-  float error = angleDiff(refYaw, currYaw);  // + = drifted one way, - = drifted other way
 
-  unsigned long elapsed = millis() - startTime;
+  straightLineTracking();
 
-  if (elapsed >= driveTimeMs || elapsed >= maxRunTimeMs) {
-    stop();
-    Serial.println("Finished straight-line run.");
-        while (true) { 
-        }
-    }
-  straightLineTracking(error);
-    
-     //delay(20); 
 }
 

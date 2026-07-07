@@ -1,69 +1,145 @@
 #pragma once
+#include <MPU6050_light.h>
+MPU6050 mpu(Wire);
 
-#include <iostream>
-#include <string>
+extern mtrn3100::Motor motor1;
+extern mtrn3100::Motor motor2;
+extern mtrn3100::Encoder encoder1;
+extern mtrn3100::Encoder encoder2;
+extern float refYaw;
 
- void straightLineTracking(float error) {
+const int baseSpeed = 140;
+const int minSpeed = 0;
+const int maxSpeed = 255;
 
-    /* Record initial IMU
-       Start loop until it reahces the target position
-       Keeping centre withing +/- 100mm
-       */
+const float WHEEL_DIAMETER_MM = 32.0;
+const float WHEEL_RADIUS_MM = WHEEL_DIAMETER_MM / 2.0;
 
-    integralError += error * 0.02; // 20ms maybe
-    integralError = constrain(integralError, -50, 50); 
+const int MOTOR1_SIGN = -1;
+const int MOTOR2_SIGN = 1;
+const float MOTOR2_TRIM = 1.0;  
 
-//    float correction = (Kp * error + Ki * integralError);
+float kp = 1.6;     
+float ki = 0.02;    
 
-    int leftSpeed  = constrain(baseSpeed - correction, minSpeed, maxSpeed);
-    int rightSpeed = constrain(baseSpeed + correction, minSpeed, maxSpeed);
+float refYaw = 0;
 
-    // Forward direction
-    digitalWrite(M1_PHASE, LOW);
-    digitalWrite(M2_PHASE, HIGH);
-
-    analogWrite(M1_ENABLE, leftSpeed);
-    analogWrite(M2_ENABLE, rightSpeed);
-
- }
-
-void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
-
-/* Track lidar distance by a loop
-    Error = currentLidar - targetDistacneMm (not sure)
-    Drive forward if error is positive and backwards if error is negative
-    Make sure to reach the desired state in 10 seconds
-    */
+float angleDiff(float target, float current) {
+    float diff = target - current;
+    while (diff > 180) diff -= 360;
+    while (diff < -180) diff += 360;
+    return diff;
 }
 
-void turnImplementation() {
-
-// Need to choose 1 method Lidar or IMU
-
+void drive(int leftSpeed, int rightSpeed) {
+    motor1.setPWM(MOTOR1_SIGN * leftSpeed);
+    motor2.setPWM(int(MOTOR2_SIGN * rightSpeed * MOTOR2_TRIM));
 }
-
-void chainMovements(const std::string commandLetter) {
-
-// Implement each letter logic for robot movement
-for (char command : commandLetter) {
-    switch (command) {
-        case 'f':
-
-            break;
-        
-        case 'l':
-
-            break;
-
-        case 'r':
-        
-            break;
-    }
-}  
-}
-
 
 void stop() {
-    analogWrite(M1_ENABLE, 0);
-    analogWrite(M1_ENABLE, 0);
+    drive(0, 0);
 }
+
+// MISSIONS
+void straightLineTracking() {
+    const float targetDistance = 1000.0;   
+    const unsigned long timeout = 30000;   
+
+    unsigned long startTime = millis();
+    float integralError = 0;  
+
+    while (millis() - startTime < timeout) {
+
+        mpu.update();
+        float currYaw = mpu.getAngleZ();
+        float error = angleDiff(refYaw, currYaw);
+
+        if (abs(error) < 1.0) error = 0;   
+
+        integralError += error * 0.01;
+        integralError = constrain(integralError, -20, 20);   
+
+        float correction = kp * error + ki * integralError;
+        correction = constrain(correction, -40, 40);   
+
+        int leftSpeed  = constrain(baseSpeed - correction, minSpeed, maxSpeed);
+        int rightSpeed = constrain(baseSpeed + correction, minSpeed, maxSpeed);
+
+        drive(leftSpeed, rightSpeed);
+
+        float leftDist  = encoder1.getRotation() * WHEEL_RADIUS_MM;
+        float rightDist = encoder2.getRotation() * WHEEL_RADIUS_MM;
+        float avgDist = (leftDist + rightDist) / 2.0;
+
+        if (avgDist >= targetDistance) break;
+
+        delay(10);
+    }
+
+    stop();
+}
+
+// void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
+// /* Track lidar distance by a loop
+//     Error = currentLidar - targetDistacneMm (not sure)
+//     Drive forward if error is positive and backwards if error is negative
+//     Make sure to reach the desired state in 10 seconds
+//     */
+// }
+
+// void turnImplementation() {
+// // Need to choose 1 method Lidar or IMU
+// }
+
+// void chainMovements(const std::string commandLetter) {
+// // Implement each letter logic for robot movement
+// for (char command : commandLetter) {
+//     switch (command) {
+//         case 'f':
+//             break;
+//         case 'l':
+//             break;
+//         case 'r':
+//             break;
+//     }
+// }
+// }
+
+// // HELPER FUNCTION ‼
+
+// void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
+
+// /* Track lidar distance by a loop
+//     Error = currentLidar - targetDistacneMm (not sure)
+//     Drive forward if error is positive and backwards if error is negative
+//     Make sure to reach the desired state in 10 seconds
+//     */
+// }
+
+// void turnImplementation() {
+
+// // Need to choose 1 method Lidar or IMU
+
+// }
+
+// void chainMovements(const std::string commandLetter) {
+
+// // Implement each letter logic for robot movement
+// for (char command : commandLetter) {
+//     switch (command) {
+//         case 'f':
+
+//             break;
+        
+//         case 'l':
+
+//             break;
+
+//         case 'r':
+        
+//             break;
+//     }
+// }  
+// }
+
+// // HELPER FUNCTION ‼
