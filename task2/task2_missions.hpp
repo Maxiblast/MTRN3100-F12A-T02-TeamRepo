@@ -2,6 +2,7 @@
 #include <MPU6050_light.h>
 MPU6050 mpu(Wire);
 
+// COnstantssss
 extern mtrn3100::Motor motor1;
 extern mtrn3100::Motor motor2;
 extern mtrn3100::Encoder encoder1;
@@ -24,6 +25,7 @@ float ki = 0.02;
 
 float refYaw = 0;
 
+// // HELPER FUNCTION ‼
 float angleDiff(float target, float current) {
     float diff = target - current;
     while (diff > 180) diff -= 360;
@@ -42,34 +44,51 @@ void stop() {
 
 // MISSIONS
 void straightLineTracking() {
-    const float targetDistance = 1000.0;   
-    const unsigned long timeout = 30000;   
+    const float targetDistance = 1000.0;  
+    const unsigned long timeout = 30000;  
 
     unsigned long startTime = millis();
-    float integralError = 0;  
+    float integralError = 0;
+
+   
+    float x = 0, y = 0;
+    float lastAvgDist = 0;
+
+    const float kLateral = 0.15;   
 
     while (millis() - startTime < timeout) {
 
         mpu.update();
         float currYaw = mpu.getAngleZ();
-        float error = angleDiff(refYaw, currYaw);
 
-        if (abs(error) < 1.0) error = 0;   
+        float leftDist  = encoder1.getRotation() * WHEEL_RADIUS_MM;
+        float rightDist = encoder2.getRotation() * WHEEL_RADIUS_MM;
+        float avgDist = (leftDist + rightDist) / 2.0;
+
+        float deltaDist = avgDist - lastAvgDist;
+        lastAvgDist = avgDist;
+
+        float headingRad = (currYaw - refYaw) * PI / 180.0; 
+        x += deltaDist * cos(headingRad);
+        y += deltaDist * sin(headingRad);
+
+        float desiredHeadingOffset = -kLateral * y;
+        desiredHeadingOffset = constrain(desiredHeadingOffset, -20.0, 20.0); 
+
+        float error = angleDiff(refYaw + desiredHeadingOffset, currYaw);
+
+        if (abs(error) < 1.0) error = 0;
 
         integralError += error * 0.01;
-        integralError = constrain(integralError, -20, 20);   
+        integralError = constrain(integralError, -20, 20);
 
         float correction = kp * error + ki * integralError;
-        correction = constrain(correction, -40, 40);   
+        correction = constrain(correction, -40, 40);
 
         int leftSpeed  = constrain(baseSpeed - correction, minSpeed, maxSpeed);
         int rightSpeed = constrain(baseSpeed + correction, minSpeed, maxSpeed);
 
         drive(leftSpeed, rightSpeed);
-
-        float leftDist  = encoder1.getRotation() * WHEEL_RADIUS_MM;
-        float rightDist = encoder2.getRotation() * WHEEL_RADIUS_MM;
-        float avgDist = (leftDist + rightDist) / 2.0;
 
         if (avgDist >= targetDistance) break;
 
@@ -141,5 +160,3 @@ void straightLineTracking() {
 //     }
 // }  
 // }
-
-// // HELPER FUNCTION ‼
