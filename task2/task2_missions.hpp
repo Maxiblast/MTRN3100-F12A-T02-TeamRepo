@@ -54,6 +54,8 @@ void turnIMU(float degrees) {
     mpu.update();
     float error = angleError(targetYaw, mpu.getAngleZ());
     int pwm = constrain((int)(controller.kp * error), -100, 100);
+    Serial.print("Error: ");
+    Serial.println(error);
 
     motor1.setPWM(pwm);
     motor2.setPWM(pwm);
