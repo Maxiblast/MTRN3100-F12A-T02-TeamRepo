@@ -11,7 +11,7 @@
 #define EAST  0b0100
 #define WEST  0b1000
 
-//Good thing for how to install g++ so you can run this. 
+//Good thing for how to install g++ so you can compile & run this. 
 //https://www.youtube.com/watch?v=1INYOToxdQY 
 
 // std::string floodFill(int maze[WIDTH][HEIGHT], std::pair<int,int> startCell ,std::pair<int,int> goalCell);
@@ -100,31 +100,157 @@ bool cellExists(std::pair<int,int> cell) {
     return false; 
 }
 
+
 void printMaze(int maze[WIDTH][HEIGHT]) {
     //start in the top left and print going down. 
-    char output[3*WIDTH][3*HEIGHT];
-    for (int x{0}; x < 3*WIDTH; x++) {
-        output[x][0] = '⬛';
-    }   
-    for (int x{0}; x < 3*WIDTH; x++) {
-        output[x][3*HEIGHT - 1] = '⬛';
-    }   
-    for (int y{0}; y < 3*HEIGHT; y++) {
-        output[0][y] = '⬛';
-    }   
-    for (int y{0}; y < 3*HEIGHT; y++) {
-        output[3*WIDTH - 1][y] = '⬛';
-    }   
+    char output[3*WIDTH + 1][3*HEIGHT + 1];
 
-    for (int j{3*HEIGHT - 1}; j >= 0; j--) {
-        for (int i{0}; i < 3*WIDTH; i++) {
-            std::println(output[i][j]);
+    int xCoord{0};          //cell count in x 
+    int yCoord{HEIGHT - 1};  //cell count in y 
+    bool isHorizontal{true};      //flag for if row of horizontal or vertical walls.
+    bool isFirstRow{true};
+
+
+    //pour maze into output
+    for (int y{0}; y < HEIGHT - 1; j++) {
+        for (int x{0}; x < WIDTH - 1; i++) {
+            if (cellExists(make_pair(x,y))) {
+                //north case
+
+            }
+            if (cellExists(make_pair(x,y))) {
+                //south case
+
+            }
+            if (cellExists(make_pair(x,y))) {
+                //east case
+
+            }
+            if (cellExists(make_pair(x,y))) {
+                //west case
+                
+            }
         }
-        std::cout << std::endl;     
     }
+
+
+
+
+    // populate output
+    // for (int j{3*HEIGHT}; j >= 0; j--) {
+    //     for (int i{0}; i < 3*WIDTH + 1; i++) {
+            
+    //     }
+    // }
+
+    for (int j{HEIGHT - 1}; j >= 0; j--) {
+        for (int i{0}; i < WIDTH - 1; i++) {
+
+
+
+
+
+            // if (isFirstRow && isHorizontal) {
+            //     std::cout << " ";
+            //     if (hasWall(maze[i][j], NORTH)) {
+            //         std::cout << "--";
+            //     }
+            //     else {
+            //         std::cout << "  ";
+            //     }
+            // }
+            // else if (isHorizontal) {
+
+            // }
+            // else {
+
+            // }
+        }
+        isFirstRow = false;
+        isHorizontal = !isHorizontal;
+    }
+
+
+
+
+
+    // for (int x{0}; x < 3*WIDTH; x++) {
+    //     output[x][0] = '⬛';
+    // }   
+    // for (int x{0}; x < 3*WIDTH; x++) {
+    //     output[x][3*HEIGHT - 1] = '⬛';
+    // }   
+    // for (int y{0}; y < 3*HEIGHT; y++) {
+    //     output[0][y] = '⬛';
+    // }   
+    // for (int y{0}; y < 3*HEIGHT; y++) {
+    //     output[3*WIDTH - 1][y] = '⬛';
+    // }   
+
+    // for (int j{3*HEIGHT - 1}; j >= 0; j--) {
+    //     for (int i{0}; i < 3*WIDTH; i++) {
+    //         std::println(output[i][j]);
+    //     }
+    //     std::cout << std::endl;     
+    // }
 }
 
 
 /*
 
+ -- -- -- --        //13 char   3*n+1
+|  |  |  |  |       //13 char
+ -- -- -- --
+|  |  |  |  |
+ -- -- -- --
+|  |  |  |  |
+ -- -- -- --
+|  |  |  |  |
+ -- -- -- --
+
+
+ 
+
+
+
+  --  --  --
+||  ||  ||  ||
+  --  --  -- 
+||  ||  ||  ||
+  --  --  --
+||  ||  ||  ||
+  --  --  --
+
 */
+
+
+/*
+
+ Checks 
+ if cell & dir == dir then wall exists.  
+ E.g 0110 & 0010 == 0010.
+ E.g 0101 & 0010 == 0000. 
+
+*/  
+bool hasWall(int cell, int dir) {
+    switch (dir) {
+        case NORTH :
+        break;
+        
+        case SOUTH :
+        break;
+
+        case WEST :
+        break;
+
+        case EAST :
+        break;
+
+        default:
+        return false;
+    }
+
+    
+    return cell & dir == dir;     
+}
+
