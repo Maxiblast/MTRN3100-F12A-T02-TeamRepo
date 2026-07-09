@@ -90,13 +90,18 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
     //start in the top left and print going down. 
     char output[3*WIDTH + 1][2*HEIGHT + 1];
 
-
-
     //pour maze into output
     for (int y{0}; y < HEIGHT - 1; j++) {
         for (int x{0}; x < WIDTH - 1; i++) {
-            //put empty spaces in.
-
+            //put empty corner spaces in.
+            output[3*x][2*y] = " ";
+            output[3*x][2*y+2] = " ";
+            output[3*x+3][2*y] = " ";
+            output[3*x+3][2*y+2] = " ";
+            //put center empty's in.
+            output[3*x+1][2*y+1] = " ";
+            output[3*x+2][2*y+1] = " ";
+            
             //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
