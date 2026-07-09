@@ -3,8 +3,8 @@
 #include <bitset>
 #include <print>
 
-#define WIDTH 4
-#define HEIGHT 4
+#define WIDTH 9
+#define HEIGHT 9
 
 #define NORTH 0b0001
 #define SOUTH 0b0010
@@ -31,15 +31,16 @@ bool hasStart(int cell);
 int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
 
-    // for (int y{0}; y < HEIGHT - 1; y++) {
-    //     for (int x{0}; x < WIDTH - 1; x++) {
-    //         maze[x][y] = maze[x][y] | 0b1111; 
-    //     }
-    // }
-    int y{1};
-    for (int x{0}; x < WIDTH; x++) {
-        maze[x][y] = maze[x][y] | 0b1111; 
+    for (int y{0}; y < HEIGHT; y++) {
+        for (int x{0}; x < WIDTH; x++) {
+            maze[x][y] = maze[x][y] | 0b1111; 
+        }
     }
+
+    // int y{1};
+    // for (int x{0}; x < WIDTH; x++) {
+    //     maze[x][y] = maze[x][y] | 0b1111; 
+    // }
 
     // setWall(maze, std::make_pair(0,0),std::make_pair(0,2));
     // setWall(maze, std::make_pair(3,0),std::make_pair(3,1));
@@ -157,12 +158,13 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
     }
 
     //print output
-    for (int j{2*HEIGHT}; j > 0 ; j--) {
+    for (int j{2*HEIGHT}; j >= 0 ; j--) {     // this line is weird with the + 1 
         for (int i{0}; i < 3*WIDTH + 1; i++) {
             std::cout << output[i][j];
         }
+        // std::cout << ' ' << j << std::endl; //vertical char numbers for debugging
         std::cout << std::endl;
-    }    
+    }
 }
 
 /*
