@@ -88,34 +88,39 @@ bool cellExists(std::pair<int,int> cell) {
 
 void printMaze(int maze[WIDTH][HEIGHT]) {
     //start in the top left and print going down. 
-    char output[3*WIDTH + 1][3*HEIGHT + 1];
+    char output[3*WIDTH + 1][2*HEIGHT + 1];
+
+
 
     //pour maze into output
     for (int y{0}; y < HEIGHT - 1; j++) {
         for (int x{0}; x < WIDTH - 1; i++) {
+            //put empty spaces in.
+
+            //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
-                output[3*x+1][3*y+2] = "-";
-                output[3*x+2][3*y+2] = "-";
+                output[3*x+1][2*y+2] = "-";
+                output[3*x+2][2*y+2] = "-";
             }
             if (hasWall(maze[x][y], SOUTH)) {
                 //south case
-                output[3*x+1][3*y] = "-";
-                output[3*x+2][3*y] = "-";
+                output[3*x+1][2*y] = "-";
+                output[3*x+2][2*y] = "-";
             }
             if (hasWall(maze[x][y], EAST)) {
                 //east case
-                output[3*x+3][3*y+1] = "|";
+                output[3*x+3][2*y+1] = "|";
             }
             if (hasWall(maze[x][y], WEST)) {
                 //west case
-                output[3*x][3*y+1] = "|";
+                output[3*x][2*y+1] = "|";
             }
         }
     }
 
     //print output
-    for (int j{0}; j < 3*HEIGHT + 1; j++) {
+    for (int j{0}; j < 2*HEIGHT + 1; j++) {
         for (int i{0}; i < 3*WIDTH + 1; i++) {
             std::cout << output[i][j];
         }
@@ -134,6 +139,7 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
 bool hasWall(int cell, int dir) {
     return cell & dir == dir;     
 }
+
 
 /*
 
