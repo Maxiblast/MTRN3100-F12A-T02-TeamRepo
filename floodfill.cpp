@@ -31,20 +31,19 @@ bool hasStart(int cell);
 int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
 
-    for (int y{0}; y < HEIGHT; y++) {
-        for (int x{0}; x < WIDTH; x++) {
-            maze[x][y] = maze[x][y] | 0b1111; 
-        }
-    }
+    // for (int y{0}; y < HEIGHT; y++) {
+    //     for (int x{0}; x < WIDTH; x++) {
+    //         maze[x][y] = maze[x][y] | 0b1111; 
+    //     }
+    // }
 
     // int y{1};
     // for (int x{0}; x < WIDTH; x++) {
     //     maze[x][y] = maze[x][y] | 0b1111; 
     // }
 
-    // setWall(maze, std::make_pair(0,0),std::make_pair(0,2));
+    setWall(maze, std::make_pair(0,0),std::make_pair(0,1));
     // setWall(maze, std::make_pair(3,0),std::make_pair(3,1));
-    // setWall(maze, std::make_pair(0,0),std::make_pair(0,1));
     // setWall(maze, std::make_pair(0,1),std::make_pair(0,2));
     printMaze(maze);
 
