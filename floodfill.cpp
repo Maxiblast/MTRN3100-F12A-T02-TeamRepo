@@ -34,12 +34,6 @@ int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
 
     setWall(maze, std::make_pair(0,1),std::make_pair(0,2));
-    // std::cout << "cell A walls: " << std::bitset<8>(maze[0][1]) << std::endl;
-    // std::cout << "cell B walls: 🟩🚀" << std::bitset<8>(maze[0][2]) << std::endl;
-    // std::pair<int,int> startCell = std::make_pair(0,0);
-    // std::pair<int,int> goalCell = std::make_pair(3,3);
-
-    // std::cout << floodFill(maze, startCell, goalCell);
 
     return 0;
 }
@@ -48,11 +42,6 @@ int main() {
 //     int distances[WIDTH][HEIGHT] ={};
 //     std::queue<std::pair<int,int>> queue{};
 // }
-
-// int setGoal() {
-    
-// }
-
 
 //sets a wall between cellA and cellB 
 //if walls are not adjacent it shouldnt do anything. despite not checking if they are adjacent or not. 
@@ -89,10 +78,6 @@ int getDirTargetCell(std::pair<int,int> current, std::pair<int,int> target) {
     return 0; // since 0 is 00000000 no walls will be made whe this is OR'd 
 }
 
-// int getNeighbours(int cell) {
-
-// }
-
 bool cellExists(std::pair<int,int> cell) {
     if (cell.first >= 0 && cell.first < WIDTH && cell.second >= 0 && cell.second < HEIGHT) {
         return true;
@@ -114,21 +99,23 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
     //pour maze into output
     for (int y{0}; y < HEIGHT - 1; j++) {
         for (int x{0}; x < WIDTH - 1; i++) {
-            if (cellExists(make_pair(x,y))) {
+            if (hasWall(maze[x][y], NORTH)) {
                 //north case
-
+                output[3*x+1][3*y+2] = "-";
+                output[3*x+2][3*y+2] = "-";
             }
-            if (cellExists(make_pair(x,y))) {
+            if (hasWall(maze[x][y], SOUTH)) {
                 //south case
-
+                output[3*x+1][3*y] = "-";
+                output[3*x+2][3*y] = "-";
             }
-            if (cellExists(make_pair(x,y))) {
+            if (hasWall(maze[x][y], EAST)) {
                 //east case
-
+                output[3*x+3][3*y+1] = "|";
             }
-            if (cellExists(make_pair(x,y))) {
+            if (hasWall(maze[x][y], WEST)) {
                 //west case
-                
+                output[3*x][3*y+1] = "|";
             }
         }
     }
