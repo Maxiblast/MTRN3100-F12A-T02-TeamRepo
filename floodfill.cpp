@@ -11,6 +11,9 @@
 #define EAST  0b0100
 #define WEST  0b1000
 
+#define GOAL   0b10000
+#define START 0b100000
+
 //Good thing for how to install g++ so you can compile & run this. 
 //https://www.youtube.com/watch?v=1INYOToxdQY 
 
@@ -99,9 +102,24 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
             output[3*x+3][2*y] = " ";
             output[3*x+3][2*y+2] = " ";
             //put center empty's in.
-            output[3*x+1][2*y+1] = " ";
-            output[3*x+2][2*y+1] = " ";
-            
+
+            if (hasGoal(cell) && hasStart(cell)) {
+                std::cout << "ERROR has both goal and Start";
+                output[3*x+1][2*y+1] = "G";
+                output[3*x+2][2*y+1] = "G";
+            }
+            else if (hasGoals(cell)) {
+                output[3*x+1][2*y+1] = "G";
+                output[3*x+2][2*y+1] = "G";
+            }
+            else if (hasStart(cell)) {
+                output[3*x+1][2*y+1] = "S";
+                output[3*x+2][2*y+1] = "S";
+            } else {
+                output[3*x+1][2*y+1] = " ";
+                output[3*x+2][2*y+1] = " ";
+            }
+
             //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
@@ -145,6 +163,13 @@ bool hasWall(int cell, int dir) {
     return cell & dir == dir;     
 }
 
+bool hasGoal(int cell) {
+    return cell & GOAL == GOAL;
+}
+
+bool hasStart(int cell) {
+    return cell & START == START;
+}
 
 /*
 
@@ -157,9 +182,6 @@ bool hasWall(int cell, int dir) {
  -- -- -- --
 |  |  |  |  |
  -- -- -- --
-
-
- 
 
 
 
