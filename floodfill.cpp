@@ -17,18 +17,13 @@
 //Good thing for how to install g++ so you can compile & run this. 
 //https://www.youtube.com/watch?v=1INYOToxdQY 
 
-// std::string floodFill(int maze[WIDTH][HEIGHT], std::pair<int,int> startCell ,std::pair<int,int> goalCell);
-
-// int setGoal(); 
-
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB);
-
 int getDirTargetCell(std::pair<int,int> current, std::pair<int,int> target);
-
-// int getNeighbours(int cell);
-
 bool cellExists(std::pair<int,int> cell);
-
+void printMaze(int maze[WIDTH][HEIGHT]);
+bool hasWall(int cell, int dir);
+bool hasGoal(int cell);
+bool hasStart(int cell);
 
 // cell data format
 // int where XXXGWESN
@@ -36,18 +31,22 @@ bool cellExists(std::pair<int,int> cell);
 int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
 
+    for (int y{0}; y < HEIGHT - 1; y++) {
+        for (int x{0}; x < WIDTH - 1; x++) {
+            maze[x][y] = maze[x][y] | 0b1111; 
+        }
+    }
+
     setWall(maze, std::make_pair(0,1),std::make_pair(0,2));
+    setWall(maze, std::make_pair(3,0),std::make_pair(3,1));
+    setWall(maze, std::make_pair(0,0),std::make_pair(0,1));
+    printMaze(maze);
+
+
 
     return 0;
 }
 
-// std::string floodFill(int maze[WIDTH][HEIGHT], std::pair<int,int> startCell ,std::pair<int,int> goalCell) {
-//     int distances[WIDTH][HEIGHT] ={};
-//     std::queue<std::pair<int,int>> queue{};
-// }
-
-//sets a wall between cellA and cellB 
-//if walls are not adjacent it shouldnt do anything. despite not checking if they are adjacent or not. 
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB) {
     if (cellExists(cellA) && cellExists(cellB)) {
         maze[cellA.first][cellA.second] = maze[cellA.first][cellA.second] | getDirTargetCell(cellA, cellB);
@@ -93,57 +92,67 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
     //start in the top left and print going down. 
     char output[3*WIDTH + 1][2*HEIGHT + 1];
 
-    //pour maze into output
-    for (int y{0}; y < HEIGHT - 1; j++) {
-        for (int x{0}; x < WIDTH - 1; i++) {
-            //put empty corner spaces in.
-            output[3*x][2*y] = " ";
-            output[3*x][2*y+2] = " ";
-            output[3*x+3][2*y] = " ";
-            output[3*x+3][2*y+2] = " ";
-            //put center empty's in.
+    //init all pixels in output as ' '
+    for (int j{0}; j < 2*HEIGHT + 1; j++) {
+        for (int i{0}; i < 3*WIDTH + 1; i++) {
+            output[i][j] = ' ';
+        }
+    }
 
-            if (hasGoal(cell) && hasStart(cell)) {
-                std::cout << "ERROR has both goal and Start";
-                output[3*x+1][2*y+1] = "G";
-                output[3*x+2][2*y+1] = "G";
-            }
-            else if (hasGoals(cell)) {
-                output[3*x+1][2*y+1] = "G";
-                output[3*x+2][2*y+1] = "G";
-            }
-            else if (hasStart(cell)) {
-                output[3*x+1][2*y+1] = "S";
-                output[3*x+2][2*y+1] = "S";
-            } else {
-                output[3*x+1][2*y+1] = " ";
-                output[3*x+2][2*y+1] = " ";
-            }
+    //pour maze into output
+    for (int y{0}; y < HEIGHT - 1; y++) {
+        for (int x{0}; x < WIDTH - 1; x++) {
+            //put empty corner spaces in.
+            // output[3*x][2*y] = ' ';
+            // output[3*x][2*y+2] = ' ';
+            // output[3*x+3][2*y] = ' ';
+            // output[3*x+3][2*y+2] = ' ';
+            // //put center empty's in.
+
+            // output[3*x+1][2*y+1] = ' ';
+            // output[3*x+2][2*y+1] = ' ';
+
+            // if (hasGoal(maze[x][y]) && hasStart(maze[x][y])) {
+            //     std::cout << "ERROR has both goal and Start";
+            //     output[3*x+1][2*y+1] = 'G';
+            //     output[3*x+2][2*y+1] = 'G';
+            // }
+            // else if (hasGoal(maze[x][y])) {
+            //     output[3*x+1][2*y+1] = 'G';
+            //     output[3*x+2][2*y+1] = 'G';
+            // }
+            // else if (hasStart(maze[x][y])) {
+            //     output[3*x+1][2*y+1] = 'S';
+            //     output[3*x+2][2*y+1] = 'S';
+            // } else {
+            //     output[3*x+1][2*y+1] = ' ';
+            //     output[3*x+2][2*y+1] = ' ';
+            // }
 
             //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
-                output[3*x+1][2*y+2] = "-";
-                output[3*x+2][2*y+2] = "-";
+                output[3*x+1][2*y+2] = '-';
+                output[3*x+2][2*y+2] = '-';
             }
             if (hasWall(maze[x][y], SOUTH)) {
                 //south case
-                output[3*x+1][2*y] = "-";
-                output[3*x+2][2*y] = "-";
+                output[3*x+1][2*y] = '-';
+                output[3*x+2][2*y] = '-';
             }
             if (hasWall(maze[x][y], EAST)) {
                 //east case
-                output[3*x+3][2*y+1] = "|";
+                output[3*x+3][2*y+1] = '|';
             }
             if (hasWall(maze[x][y], WEST)) {
                 //west case
-                output[3*x][2*y+1] = "|";
+                output[3*x][2*y+1] = '|';
             }
         }
     }
 
     //print output
-    for (int j{0}; j < 2*HEIGHT + 1; j++) {
+    for (int j{2*HEIGHT}; j > 0 ; j--) {
         for (int i{0}; i < 3*WIDTH + 1; i++) {
             std::cout << output[i][j];
         }
