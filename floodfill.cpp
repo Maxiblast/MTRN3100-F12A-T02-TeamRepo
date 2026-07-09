@@ -90,12 +90,6 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
     //start in the top left and print going down. 
     char output[3*WIDTH + 1][3*HEIGHT + 1];
 
-    int xCoord{0};          //cell count in x 
-    int yCoord{HEIGHT - 1};  //cell count in y 
-    bool isHorizontal{true};      //flag for if row of horizontal or vertical walls.
-    bool isFirstRow{true};
-
-
     //pour maze into output
     for (int y{0}; y < HEIGHT - 1; j++) {
         for (int x{0}; x < WIDTH - 1; i++) {
@@ -120,68 +114,26 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
         }
     }
 
-
-
-
-    // populate output
-    // for (int j{3*HEIGHT}; j >= 0; j--) {
-    //     for (int i{0}; i < 3*WIDTH + 1; i++) {
-            
-    //     }
-    // }
-
-    for (int j{HEIGHT - 1}; j >= 0; j--) {
-        for (int i{0}; i < WIDTH - 1; i++) {
-
-
-
-
-
-            // if (isFirstRow && isHorizontal) {
-            //     std::cout << " ";
-            //     if (hasWall(maze[i][j], NORTH)) {
-            //         std::cout << "--";
-            //     }
-            //     else {
-            //         std::cout << "  ";
-            //     }
-            // }
-            // else if (isHorizontal) {
-
-            // }
-            // else {
-
-            // }
+    //print output
+    for (int j{0}; j < 3*HEIGHT + 1; j++) {
+        for (int i{0}; i < 3*WIDTH + 1; i++) {
+            std::cout << output[i][j];
         }
-        isFirstRow = false;
-        isHorizontal = !isHorizontal;
-    }
-
-
-
-
-
-    // for (int x{0}; x < 3*WIDTH; x++) {
-    //     output[x][0] = '⬛';
-    // }   
-    // for (int x{0}; x < 3*WIDTH; x++) {
-    //     output[x][3*HEIGHT - 1] = '⬛';
-    // }   
-    // for (int y{0}; y < 3*HEIGHT; y++) {
-    //     output[0][y] = '⬛';
-    // }   
-    // for (int y{0}; y < 3*HEIGHT; y++) {
-    //     output[3*WIDTH - 1][y] = '⬛';
-    // }   
-
-    // for (int j{3*HEIGHT - 1}; j >= 0; j--) {
-    //     for (int i{0}; i < 3*WIDTH; i++) {
-    //         std::println(output[i][j]);
-    //     }
-    //     std::cout << std::endl;     
-    // }
+        std::cout << std::endl;
+    }    
 }
 
+/*
+
+ Checks 
+ if cell & dir == dir then wall exists.  
+ E.g 0110 & 0010 == 0010.
+ E.g 0101 & 0010 == 0000. 
+
+*/  
+bool hasWall(int cell, int dir) {
+    return cell & dir == dir;     
+}
 
 /*
 
@@ -210,34 +162,4 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
 
 */
 
-
-/*
-
- Checks 
- if cell & dir == dir then wall exists.  
- E.g 0110 & 0010 == 0010.
- E.g 0101 & 0010 == 0000. 
-
-*/  
-bool hasWall(int cell, int dir) {
-    switch (dir) {
-        case NORTH :
-        break;
-        
-        case SOUTH :
-        break;
-
-        case WEST :
-        break;
-
-        case EAST :
-        break;
-
-        default:
-        return false;
-    }
-
-    
-    return cell & dir == dir;     
-}
 
