@@ -28,26 +28,31 @@ bool hasStart(int cell);
 // cell data format
 // int where XXXGWESN
 
+/*
+ -- -- -- --        //13 char   3*n+1
+|  |  |  |  |       //13 char
+ -- -- -- --
+|  |  |  |  |
+ -- -- -- --
+|  |  |  |  |
+ -- -- -- --
+|  |  |  |  |
+ -- -- -- --
+*/
+
 int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
 
-    // for (int y{0}; y < HEIGHT; y++) {
-    //     for (int x{0}; x < WIDTH; x++) {
-    //         maze[x][y] = maze[x][y] | 0b1111; 
-    //     }
-    // }
+    for (int y{0}; y < HEIGHT; y++) {
+        for (int x{0}; x < WIDTH; x++) {
+            maze[x][y] = maze[x][y] | 0b1111; 
+        }
+    }
 
-    // int y{1};
-    // for (int x{0}; x < WIDTH; x++) {
-    //     maze[x][y] = maze[x][y] | 0b1111; 
-    // }
-
-    setWall(maze, std::make_pair(0,0),std::make_pair(0,1));
+    // setWall(maze, std::make_pair(0,0),std::make_pair(0,1));
     // setWall(maze, std::make_pair(3,0),std::make_pair(3,1));
     // setWall(maze, std::make_pair(0,1),std::make_pair(0,2));
     printMaze(maze);
-
-
 
     return 0;
 }
@@ -141,53 +146,20 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
             //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
-                int dir = NORTH;
-                int calc = maze[x][y] & dir;
-                int result = (maze[x][y] & dir) == dir; 
-                std::cout << " NORTH: " << x << y;
-                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
-                std::cout << " Dir: " << std::bitset<4>(dir);
-                std::cout << " Calc: " << std::bitset<4>(calc);
-                std::cout << " Result: " << result << std::endl;
-
                 output[3*x+1][2*y+2] = '-';
                 output[3*x+2][2*y+2] = '-';
             }
             if (hasWall(maze[x][y], SOUTH)) {
                 //south case
-                int dir = SOUTH;
-                int calc = maze[x][y] & dir;
-                int result = (maze[x][y] & dir) == dir; 
-                std::cout << " SOUTH: " << x << y;
-                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
-                std::cout << " Dir: " << std::bitset<4>(dir);
-                std::cout << " Calc: " << std::bitset<4>(calc);
-                std::cout << " Result: " << result << std::endl;
                 output[3*x+1][2*y] = '-';
                 output[3*x+2][2*y] = '-';
             }
             if (hasWall(maze[x][y], EAST)) {
                 //east case                
-                int dir = EAST;
-                int calc = maze[x][y] & dir;
-                int result = (maze[x][y] & dir) == dir; 
-                std::cout << " EAST: " << x << y;
-                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
-                std::cout << " Dir: " << std::bitset<4>(dir);
-                std::cout << " Calc: " << std::bitset<4>(calc);
-                std::cout << " Result: " << result << std::endl;
                 output[3*x+3][2*y+1] = '|';
             }
             if (hasWall(maze[x][y], WEST)) {
                 //west case
-                int dir = WEST;
-                int calc = maze[x][y] & dir;
-                int result = (maze[x][y] & dir) == dir; 
-                std::cout << " WEST: " << x << y;
-                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
-                std::cout << " Dir: " << std::bitset<4>(dir);
-                std::cout << " Calc: " << std::bitset<4>(calc);
-                std::cout << " Result: " << result << std::endl;
                 output[3*x][2*y+1] = '|';
             }
         }
@@ -226,28 +198,6 @@ bool hasStart(int cell) {
     return (cell & START) == START;
 }
 
-/*
 
- -- -- -- --        //13 char   3*n+1
-|  |  |  |  |       //13 char
- -- -- -- --
-|  |  |  |  |
- -- -- -- --
-|  |  |  |  |
- -- -- -- --
-|  |  |  |  |
- -- -- -- --
-
-
-
-  --  --  --
-||  ||  ||  ||
-  --  --  -- 
-||  ||  ||  ||
-  --  --  --
-||  ||  ||  ||
-  --  --  --
-
-*/
 
 
