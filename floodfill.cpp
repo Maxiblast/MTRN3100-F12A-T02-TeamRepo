@@ -107,54 +107,94 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
     //pour maze into output
     for (int y{0}; y < HEIGHT; y++) {   
         for (int x{0}; x < WIDTH; x++) {
-            //put empty corner spaces in.
-            // output[3*x][2*y] = ' ';
-            // output[3*x][2*y+2] = ' ';
-            // output[3*x+3][2*y] = ' ';
-            // output[3*x+3][2*y+2] = ' ';
-            // //put center empty's in.
+    //         //put empty corner spaces in.
+    //         // output[3*x][2*y] = ' ';
+    //         // output[3*x][2*y+2] = ' ';
+    //         // output[3*x+3][2*y] = ' ';
+    //         // output[3*x+3][2*y+2] = ' ';
+    //         // //put center empty's in.
 
-            // output[3*x+1][2*y+1] = ' ';
-            // output[3*x+2][2*y+1] = ' ';
+    //         // output[3*x+1][2*y+1] = ' ';
+    //         // output[3*x+2][2*y+1] = ' ';
 
-            // if (hasGoal(maze[x][y]) && hasStart(maze[x][y])) {
-            //     std::cout << "ERROR has both goal and Start";
-            //     output[3*x+1][2*y+1] = 'G';
-            //     output[3*x+2][2*y+1] = 'G';
-            // }
-            // else if (hasGoal(maze[x][y])) {
-            //     output[3*x+1][2*y+1] = 'G';
-            //     output[3*x+2][2*y+1] = 'G';
-            // }
-            // else if (hasStart(maze[x][y])) {
-            //     output[3*x+1][2*y+1] = 'S';
-            //     output[3*x+2][2*y+1] = 'S';
-            // } else {
-            //     output[3*x+1][2*y+1] = ' ';
-            //     output[3*x+2][2*y+1] = ' ';
-            // }
+    //         // if (hasGoal(maze[x][y]) && hasStart(maze[x][y])) {
+    //         //     std::cout << "ERROR has both goal and Start";
+    //         //     output[3*x+1][2*y+1] = 'G';
+    //         //     output[3*x+2][2*y+1] = 'G';
+    //         // }
+    //         // else if (hasGoal(maze[x][y])) {
+    //         //     output[3*x+1][2*y+1] = 'G';
+    //         //     output[3*x+2][2*y+1] = 'G';
+    //         // }
+    //         // else if (hasStart(maze[x][y])) {
+    //         //     output[3*x+1][2*y+1] = 'S';
+    //         //     output[3*x+2][2*y+1] = 'S';
+    //         // } else {
+    //         //     output[3*x+1][2*y+1] = ' ';
+    //         //     output[3*x+2][2*y+1] = ' ';
+    //         // }
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // hasWall function is returning wrong
+
 
             //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
+                int dir = NORTH;
+                int calc = maze[x][y] & dir;
+                int result = (maze[x][y] & dir) == dir; 
+                std::cout << " NORTH: " << x << y;
+                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
+                std::cout << " Dir: " << std::bitset<4>(dir);
+                std::cout << " Calc: " << std::bitset<4>(calc);
+                std::cout << " Result: " << result << std::endl;
+
                 output[3*x+1][2*y+2] = '-';
                 output[3*x+2][2*y+2] = '-';
             }
             if (hasWall(maze[x][y], SOUTH)) {
                 //south case
+                int dir = SOUTH;
+                int calc = maze[x][y] & dir;
+                int result = (maze[x][y] & dir) == dir; 
+                std::cout << " SOUTH: " << x << y;
+                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
+                std::cout << " Dir: " << std::bitset<4>(dir);
+                std::cout << " Calc: " << std::bitset<4>(calc);
+                std::cout << " Result: " << result << std::endl;
                 output[3*x+1][2*y] = '-';
                 output[3*x+2][2*y] = '-';
             }
             if (hasWall(maze[x][y], EAST)) {
-                //east case
+                //east case                
+                int dir = EAST;
+                int calc = maze[x][y] & dir;
+                int result = (maze[x][y] & dir) == dir; 
+                std::cout << " EAST: " << x << y;
+                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
+                std::cout << " Dir: " << std::bitset<4>(dir);
+                std::cout << " Calc: " << std::bitset<4>(calc);
+                std::cout << " Result: " << result << std::endl;
                 output[3*x+3][2*y+1] = '|';
             }
             if (hasWall(maze[x][y], WEST)) {
                 //west case
+                int dir = WEST;
+                int calc = maze[x][y] & dir;
+                int result = (maze[x][y] & dir) == dir; 
+                std::cout << " WEST: " << x << y;
+                std::cout << " Val: " << std::bitset<4>(maze[x][y]);
+                std::cout << " Dir: " << std::bitset<4>(dir);
+                std::cout << " Calc: " << std::bitset<4>(calc);
+                std::cout << " Result: " << result << std::endl;
                 output[3*x][2*y+1] = '|';
             }
         }
     }
+
+    ////////////////////////////////////////////////////////////////////////////////
+
 
     //print output
     for (int j{2*HEIGHT}; j >= 0 ; j--) {     // this line is weird with the + 1 
@@ -175,15 +215,15 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
 
 */  
 bool hasWall(int cell, int dir) {
-    return cell & dir == dir;     
+    return (cell & dir) == dir;     
 }
 
 bool hasGoal(int cell) {
-    return cell & GOAL == GOAL;
+    return (cell & GOAL) == GOAL;
 }
 
 bool hasStart(int cell) {
-    return cell & START == START;
+    return (cell & START) == START;
 }
 
 /*
