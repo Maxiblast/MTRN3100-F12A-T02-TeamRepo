@@ -3,8 +3,8 @@
 #include <bitset>
 #include <print>
 
-#define WIDTH 9
-#define HEIGHT 9
+#define WIDTH 4
+#define HEIGHT 4
 
 #define NORTH 0b0001
 #define SOUTH 0b0010
@@ -18,15 +18,21 @@
 //https://www.youtube.com/watch?v=1INYOToxdQY 
 
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB);
+void removeWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cell, int dir);
 int getDirTargetCell(std::pair<int,int> current, std::pair<int,int> target);
 bool cellExists(std::pair<int,int> cell);
 void printMaze(int maze[WIDTH][HEIGHT]);
 bool hasWall(int cell, int dir);
 bool hasGoal(int cell);
 bool hasStart(int cell);
+std::pair<int,int> getCellFromDir(std::pair<int,int> cell, int dir);
+int getOppositeDir(int dir);
+void setGoal(int maze[WIDTH][HEIGHT], std::pair<int,int> cell);
+void setStart(int maze[WIDTH][HEIGHT], std::pair<int,int> cell);
+void setAllWalls(int maze[WIDTH][HEIGHT]);
 
 // cell data format
-// int where XXXGWESN
+// int where XXSGWESN,      START,GOAL,WEST,EAST,SOUTH,NORTH
 
 /*
  -- -- -- --        //13 char   3*n+1
@@ -42,19 +48,28 @@ bool hasStart(int cell);
 
 int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
+    
+    setAllWalls(maze);
+    printMaze(maze);
 
-    for (int y{0}; y < HEIGHT; y++) {
-        for (int x{0}; x < WIDTH; x++) {
-            maze[x][y] = maze[x][y] | 0b1111; 
-        }
-    }
+    std::cout << "------------------------------------" << std::endl;
 
-    // setWall(maze, std::make_pair(0,0),std::make_pair(0,1));
-    // setWall(maze, std::make_pair(3,0),std::make_pair(3,1));
-    // setWall(maze, std::make_pair(0,1),std::make_pair(0,2));
+    // removeWall(maze, std::make_pair(3,3), NORTH);
+    removeWall(maze, std::make_pair(0,0), SOUTH);
+    // removeWall(maze, std::make_pair(3,3), EAST);
+    removeWall(maze, std::make_pair(0,0), WEST);
+
+    setStart(maze, std::make_pair(0,0));
+    setGoal(maze, std::make_pair(0,3));
+
     printMaze(maze);
 
     return 0;
+}
+
+std::string floodfill(int maze[WIDTH][HEIGHT]) {
+    int distances[WIDTH][HEIGHT]{};
+
 }
 
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB) {
@@ -64,6 +79,16 @@ void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,in
     }
     else {
         std::cout << "Error Cell doesnt exist" << std::endl;
+    }
+}
+
+void removeWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cell, int dir) {
+    if (cellExists(cell)) {
+        maze[cell.first][cell.second] = maze[cell.first][cell.second] ^ dir; // turns OFF walls in direction
+        std::pair<int,int> otherCell = getCellFromDir(cell, dir);
+        if (cellExists(otherCell)) {
+            maze[otherCell.first][otherCell.second] = maze[otherCell.first][otherCell.second] ^ getOppositeDir(dir);
+        }   
     }
 }
 
@@ -101,48 +126,15 @@ bool cellExists(std::pair<int,int> cell) {
 void printMaze(int maze[WIDTH][HEIGHT]) {
     //start in the top left and print going down. 
     char output[3*WIDTH + 1][2*HEIGHT + 1];
-
     //init all pixels in output as ' '
     for (int j{0}; j < 2*HEIGHT + 1; j++) {
         for (int i{0}; i < 3*WIDTH + 1; i++) {
             output[i][j] = ' ';
         }
     }
-
     //pour maze into output
     for (int y{0}; y < HEIGHT; y++) {   
         for (int x{0}; x < WIDTH; x++) {
-    //         //put empty corner spaces in.
-    //         // output[3*x][2*y] = ' ';
-    //         // output[3*x][2*y+2] = ' ';
-    //         // output[3*x+3][2*y] = ' ';
-    //         // output[3*x+3][2*y+2] = ' ';
-    //         // //put center empty's in.
-
-    //         // output[3*x+1][2*y+1] = ' ';
-    //         // output[3*x+2][2*y+1] = ' ';
-
-    //         // if (hasGoal(maze[x][y]) && hasStart(maze[x][y])) {
-    //         //     std::cout << "ERROR has both goal and Start";
-    //         //     output[3*x+1][2*y+1] = 'G';
-    //         //     output[3*x+2][2*y+1] = 'G';
-    //         // }
-    //         // else if (hasGoal(maze[x][y])) {
-    //         //     output[3*x+1][2*y+1] = 'G';
-    //         //     output[3*x+2][2*y+1] = 'G';
-    //         // }
-    //         // else if (hasStart(maze[x][y])) {
-    //         //     output[3*x+1][2*y+1] = 'S';
-    //         //     output[3*x+2][2*y+1] = 'S';
-    //         // } else {
-    //         //     output[3*x+1][2*y+1] = ' ';
-    //         //     output[3*x+2][2*y+1] = ' ';
-    //         // }
-
-    ////////////////////////////////////////////////////////////////////////////////
-    // hasWall function is returning wrong
-
-
             //put walls in.
             if (hasWall(maze[x][y], NORTH)) {
                 //north case
@@ -161,6 +153,20 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
             if (hasWall(maze[x][y], WEST)) {
                 //west case
                 output[3*x][2*y+1] = '|';
+            }
+            //put goal and start in
+            if (hasGoal(maze[x][y]) && hasStart(maze[x][y])) {
+                std::cout << "ERROR has both goal and Start: " << x << y << std::endl;
+                output[3*x+1][2*y+1] = 'G';
+                output[3*x+2][2*y+1] = 'G';
+            }
+            else if (hasGoal(maze[x][y])) {
+                output[3*x+1][2*y+1] = 'G';
+                output[3*x+2][2*y+1] = 'G';
+            }
+            else if (hasStart(maze[x][y])) {
+                output[3*x+1][2*y+1] = 'S';
+                output[3*x+2][2*y+1] = 'S';
             }
         }
     }
@@ -198,6 +204,77 @@ bool hasStart(int cell) {
     return (cell & START) == START;
 }
 
+//warning returns self if error. 
+std::pair<int,int> getCellFromDir(std::pair<int,int> cell, int dir) {
+    std::pair<int,int> result = cell;
+    switch (dir){
+        case NORTH:
+            result.second++;
+        break;
+        case SOUTH:
+            result.second--;
+        break;
+        case EAST:
+            result.first++;
+        break; 
+        case WEST:
+            result.first--;
+        break;
+        default:
+            std::cout << "getOppositeDir - Error not a direction";
+        break;
+    }
+    return result;
+}
 
 
+// given a direction returns opposite direction
+int getOppositeDir(int dir) {
+    int result;
+    switch (dir){
+        case NORTH:
+            result = SOUTH;
+        break;
+        case SOUTH:
+            result = NORTH;
+        break;
+        case EAST:
+            result = WEST;
+        break; 
+        case WEST:
+            result = EAST;
+        break;
+        default:
+            std::cout << "getOppositeDir - Error not a direction";
+            result = 0;
+        break;
+    }
+    return result;
+}
 
+void setGoal(int maze[WIDTH][HEIGHT], std::pair<int,int> cell) {
+    if (cellExists(cell)) {
+        maze[cellA.first][cellA.second] = maze[cellA.first][cellA.second] | GOAL;
+    }
+    else {
+        std::cout << "Error Cell doesnt exist" << std::endl;
+    }
+}
+
+void setStart(int maze[WIDTH][HEIGHT], std::pair<int,int> cell) {
+    if (cellExists(cell)) {
+        maze[cellA.first][cellA.second] = maze[cellA.first][cellA.second] | START;
+    }
+    else {
+        std::cout << "Error Cell doesnt exist" << std::endl;
+    }
+}
+
+//fills the maze with walls
+void setAllWalls(int maze[WIDTH][HEIGHT]) {
+    for (int y{0}; y < HEIGHT; y++) {
+        for (int x{0}; x < WIDTH; x++) {
+            maze[x][y] = maze[x][y] | 0b1111; 
+        }
+    }
+}
