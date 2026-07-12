@@ -67,10 +67,10 @@ int main() {
     return 0;
 }
 
-std::string floodfill(int maze[WIDTH][HEIGHT]) {
-    int distances[WIDTH][HEIGHT]{};
+// std::string floodfill(int maze[WIDTH][HEIGHT]) {
+//     int distances[WIDTH][HEIGHT]{};
 
-}
+// }
 
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB) {
     if (cellExists(cellA) && cellExists(cellB)) {
@@ -254,7 +254,7 @@ int getOppositeDir(int dir) {
 
 void setGoal(int maze[WIDTH][HEIGHT], std::pair<int,int> cell) {
     if (cellExists(cell)) {
-        maze[cellA.first][cellA.second] = maze[cellA.first][cellA.second] | GOAL;
+        maze[cell.first][cell.second] = maze[cell.first][cell.second] | GOAL;
     }
     else {
         std::cout << "Error Cell doesnt exist" << std::endl;
@@ -263,7 +263,7 @@ void setGoal(int maze[WIDTH][HEIGHT], std::pair<int,int> cell) {
 
 void setStart(int maze[WIDTH][HEIGHT], std::pair<int,int> cell) {
     if (cellExists(cell)) {
-        maze[cellA.first][cellA.second] = maze[cellA.first][cellA.second] | START;
+        maze[cell.first][cell.second] = maze[cell.first][cell.second] | START;
     }
     else {
         std::cout << "Error Cell doesnt exist" << std::endl;
