@@ -68,21 +68,36 @@ int main() {
 std::string floodfill(int maze[WIDTH][HEIGHT]) {
     int distances[WIDTH][HEIGHT]{};
     std::queue<std::pair<int,int>> queue{};
-    //find start and goal cell
-
-    for (int j{0}; j < 2*HEIGHT + 1; j++) {
-        for (int i{0}; i < 3*WIDTH + 1; i++) {
+    //add goal cells and initialise all other cells as -1 which means not seen yet.
+    for (int y{0}; y < HEIGHT; y++) {   
+        for (int x{0}; x < WIDTH; x++) {
             if(hasGoal(maze[x][y])) {
                 queue.push(make_pair(x,y));
+                distance[x][y] = 0;
+            } else {
+                distance[x][y] = -1;
             }
         }
     }
+
     // std::cout << "FloodFill queue: "
     // for (auto& elem : queue) {
     //     std::cout << elem.first << elem.second
     // }
     // std::cout << std::endl;
     printQueue(queue);
+
+    while(!queue.empty()) {
+        std::pair<int,int> curr = queue.front();
+        queue.pop();
+
+        std::pair<int,int> curr2 = getCellFromDir(curr,NORTH);
+        if (cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
+            distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
+            
+        }
+
+    }
 
 }
 
