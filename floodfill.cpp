@@ -30,6 +30,7 @@ int getOppositeDir(int dir);
 void setGoal(int maze[WIDTH][HEIGHT], std::pair<int,int> cell);
 void setStart(int maze[WIDTH][HEIGHT], std::pair<int,int> cell);
 void setAllWalls(int maze[WIDTH][HEIGHT]);
+void printQueue(std::queue<std::pair<int,int>> queue);
 
 // cell data format
 // int where XXSGWESN,      START,GOAL,WEST,EAST,SOUTH,NORTH
@@ -50,9 +51,6 @@ int main() {
     int maze[WIDTH][HEIGHT] = {};  // maze[x][y] bottom left is 0,0
     
     setAllWalls(maze);
-    printMaze(maze);
-
-    std::cout << "------------------------------------" << std::endl;
 
     // removeWall(maze, std::make_pair(3,3), NORTH);
     removeWall(maze, std::make_pair(0,0), SOUTH);
@@ -67,10 +65,26 @@ int main() {
     return 0;
 }
 
-// std::string floodfill(int maze[WIDTH][HEIGHT]) {
-//     int distances[WIDTH][HEIGHT]{};
+std::string floodfill(int maze[WIDTH][HEIGHT]) {
+    int distances[WIDTH][HEIGHT]{};
+    std::queue<std::pair<int,int>> queue{};
+    //find start and goal cell
 
-// }
+    for (int j{0}; j < 2*HEIGHT + 1; j++) {
+        for (int i{0}; i < 3*WIDTH + 1; i++) {
+            if(hasGoal(maze[x][y])) {
+                queue.push(make_pair(x,y));
+            }
+        }
+    }
+    // std::cout << "FloodFill queue: "
+    // for (auto& elem : queue) {
+    //     std::cout << elem.first << elem.second
+    // }
+    // std::cout << std::endl;
+    printQueue(queue);
+
+}
 
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB) {
     if (cellExists(cellA) && cellExists(cellB)) {
@@ -277,4 +291,14 @@ void setAllWalls(int maze[WIDTH][HEIGHT]) {
             maze[x][y] = maze[x][y] | 0b1111; 
         }
     }
+}
+
+//For floodfill function. 
+//Prints ever element in queue
+void printQueue(std::queue<std::pair<int,int>> queue) {
+    std::cout << "FloodFill queue: "
+    for (auto& elem : queue) {
+        std::cout << elem.first << elem.second << " ";
+    }
+    std::cout << std::endl;
 }
