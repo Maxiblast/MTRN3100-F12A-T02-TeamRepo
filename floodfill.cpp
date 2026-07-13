@@ -72,33 +72,36 @@ std::string floodfill(int maze[WIDTH][HEIGHT]) {
     for (int y{0}; y < HEIGHT; y++) {   
         for (int x{0}; x < WIDTH; x++) {
             if(hasGoal(maze[x][y])) {
-                queue.push(make_pair(x,y));
-                distance[x][y] = 0;
+                queue.push(std::make_pair(x,y));
+                distances[x][y] = 0;
             } else {
-                distance[x][y] = -1;
+                distances[x][y] = -1;
             }
         }
     }
-
+    printQueue(queue);
     // std::cout << "FloodFill queue: "
     // for (auto& elem : queue) {
     //     std::cout << elem.first << elem.second
     // }
     // std::cout << std::endl;
-    printQueue(queue);
+
 
     while(!queue.empty()) {
         std::pair<int,int> curr = queue.front();
         queue.pop();
 
-        std::pair<int,int> curr2 = getCellFromDir(curr,NORTH);
-        if (cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
-            distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
-            
+        std::vector<int> directions {NORTH,SOUTH,EAST,WEST};
+        for (int dir : directions) {
+            std::pair<int,int> curr2 = getCellFromDir(curr, dir);
+            if (cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
+                distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
+                queue.push(make_pair(curr2.first, curr2.second));
+            } 
         }
-
+        printQueue(queue);
     }
-
+    return " ";
 }
 
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB) {
@@ -311,7 +314,7 @@ void setAllWalls(int maze[WIDTH][HEIGHT]) {
 //For floodfill function. 
 //Prints ever element in queue
 void printQueue(std::queue<std::pair<int,int>> queue) {
-    std::cout << "FloodFill queue: "
+    std::cout << "FloodFill queue: ";
     for (auto& elem : queue) {
         std::cout << elem.first << elem.second << " ";
     }
