@@ -95,13 +95,14 @@ std::string floodfill(int maze[WIDTH][HEIGHT]) {
         queue.pop();
 
         std::vector<int> directions {NORTH,SOUTH,EAST,WEST};
-        for (int dir : directions) {
-            std::pair<int,int> curr2 = getCellFromDir(curr, dir);
-            if (cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
-                distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
-                queue.push(std::make_pair(curr2.first, curr2.second));
-            } 
-        }
+        // for (int dir : directions) {
+        //     std::pair<int,int> curr2 = getCellFromDir(curr, dir);
+        //     if (!hasWall(curr, dir) && cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
+        //         distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
+        //         queue.push(std::make_pair(curr2.first, curr2.second));
+        //     } 
+        // }
+
         printQueue(queue);
     }
     return " ";
@@ -227,6 +228,8 @@ void printMaze(int maze[WIDTH][HEIGHT]) {
  E.g 0101 & 0010 == 0000. 
 
 */  
+
+// returns if current cell has a wall in the given direction.
 bool hasWall(int cell, int dir) {
     return (cell & dir) == dir;     
 }
