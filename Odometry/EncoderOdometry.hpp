@@ -9,7 +9,7 @@ public:
 
   void update(float leftValue,float rightValue) {
     delta_left_radians = -(lastLPos - leftValue); // MAKE SURE THE ENCODERS COUNT UP CORRECTLY IE. THEYARE NOT THE WRONG DIRECTION 
-    delta_right_radians = (lastRPos - rightValue); // MAKE SURE THE ENCODERS COUNT UP CORRECTLY IE. THEY ARE NOT THE WRONG DIRECTION 
+    delta_right_radians = -(lastRPos - rightValue); // MAKE SURE THE ENCODERS COUNT UP CORRECTLY IE. THEY ARE NOT THE WRONG DIRECTION 
 
     float delta_s = (R * delta_left_radians)/2 + (R * delta_right_radians)/2;
     float delta_theta = (R * delta_right_radians)/B - (R * delta_left_radians)/B;

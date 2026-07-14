@@ -27,7 +27,7 @@ mtrn3100::EncoderOdometry encoder_odometry(16,85);
 MPU6050 mpu(Wire);
 
 //Controllers
-mtrn3100::PIDController controller(200,2,10);
+mtrn3100::PIDController controller(100,1,4);
 
 //Constants
 #define TARGET_RAD 6.28
@@ -49,8 +49,14 @@ void setup() {
 }
 
 void loop() {
+  delay(1000);
   driveForward(200);
   turn(90);
+  driveForward(100);
+  while (true) {};
+  // delay(50);
+  // updateOdometry();
+  // serialPrint();
 }
 
 void updateOdometry() {
@@ -72,8 +78,8 @@ void serialPrint() {
 }
 
 void driveForward(float distance) {
-  encoder1.count = 0;
-  encoder2.count = 0;
+  float startLeft = encoder1.getRotation();
+  float startRight = encoder2.getRotation();
   controller.integral = 0;
   controller.prev_error = 0;
 
@@ -81,14 +87,14 @@ void driveForward(float distance) {
   controller.zeroAndSetTarget(0, target);
 
   while (true) {
-    float leftRot = encoder1.getRotation();
-    float rightRot = encoder2.getRotation();
-    float avg = (leftRot + rightRot) / 2.0;
+    float leftRot = encoder1.getRotation() - startLeft;
+    float rightRot = encoder2.getRotation() - startRight;
+    float avgRot = (leftRot + rightRot) / 2.0;
 
-    updateOdometry();
+    updateOdometry();  // global pose
     serialPrint();
 
-    int pwm = controller.compute(avg);
+    int pwm = controller.compute(avgRot);
 
     motor1.setPWM(-pwm);
     motor2.setPWM(pwm);
@@ -104,31 +110,45 @@ void driveForward(float distance) {
 }
 
 void turn(float angleDegrees) {
-  encoder1.count = 0;
-  encoder2.count = 0;
   controller.integral = 0;
   controller.prev_error = 0;
+  static int printCount = 0;
+
+  float startLeft = encoder1.getRotation();
+  float startRight = encoder2.getRotation();
 
   float turn_angle = angleDegrees * PI / 180.0;
   float arc = (DISTANCE_BETWEEN_WHEELS / 2.0) * turn_angle;
-  float target = arc / WHEEL_RADIUS;
-  controller.zeroAndSetTarget(0, target);
+  float target_rot = arc / WHEEL_RADIUS;
+  controller.zeroAndSetTarget(0, target_rot);
 
   while (true) {
-    float avg = (encoder2.getRotation() - encoder1.getRotation()) / 2.0;
+    float leftRot = encoder1.getRotation() - startLeft;
+    float rightRot = encoder2.getRotation() - startRight;
+    float avg = (rightRot - leftRot) / 2.0;
 
-    updateOdometry();
-    serialPrint();
+    updateOdometry();  // global pose
+    if (++printCount % 5 == 0) {
+      serialPrint();
+    }
 
     int pwm = controller.compute(avg);
 
-    motor1.setPWM(pwm);
-    motor2.setPWM(pwm);
+    if (angleDegrees > 0) {
+      motor1.setPWM(pwm);
+      motor2.setPWM(pwm);
+    } else {
+      motor1.setPWM(-pwm);
+      motor2.setPWM(-pwm);
+    }
 
     if (abs(controller.error) < 0.1) {
       motor1.setPWM(0);
       motor2.setPWM(0);
       break;
     }
+
+    delay(10);
   }
 }
+
