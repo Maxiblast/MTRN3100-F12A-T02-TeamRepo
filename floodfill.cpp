@@ -3,8 +3,8 @@
 #include <bitset>
 #include <print>
 
-#define WIDTH 4
-#define HEIGHT 4
+#define WIDTH 9    // might break for large 10x10
+#define HEIGHT 9
 
 #define NORTH 0b0001
 #define SOUTH 0b0010
@@ -33,6 +33,7 @@ void setGoal(int maze[WIDTH][HEIGHT], std::pair<int,int> cell);
 void setStart(int maze[WIDTH][HEIGHT], std::pair<int,int> cell);
 void setAllWalls(int maze[WIDTH][HEIGHT]);
 void printQueue(std::queue<std::pair<int,int>> queue);
+void printDistances(int maze[WIDTH][HEIGHT], int distances[WIDTH][HEIGHT]);
 
 // cell data format
 // int where XXSGWESN,      START,GOAL,WEST,EAST,SOUTH,NORTH
@@ -82,29 +83,25 @@ std::string floodfill(int maze[WIDTH][HEIGHT]) {
             }
         }
     }
-    printQueue(queue);
-    // std::cout << "FloodFill queue: "
-    // for (auto& elem : queue) {
-    //     std::cout << elem.first << elem.second
-    // }
-    // std::cout << std::endl;
-
 
     while(!queue.empty()) {
+        printQueue(queue);
         std::pair<int,int> curr = queue.front();
         queue.pop();
 
         std::vector<int> directions {NORTH,SOUTH,EAST,WEST};
-        // for (int dir : directions) {
-        //     std::pair<int,int> curr2 = getCellFromDir(curr, dir);
-        //     if (!hasWall(curr, dir) && cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
-        //         distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
-        //         queue.push(std::make_pair(curr2.first, curr2.second));
-        //     } 
-        // }
+        for (int dir : directions) {
+            std::pair<int,int> curr2 = getCellFromDir(curr, dir);
+            if (!hasWall(maze[curr.first][curr.second], dir) && cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
+                distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
+                queue.push(std::make_pair(curr2.first, curr2.second));
+            } 
+        }
+    } 
+    printQueue(queue);
 
-        printQueue(queue);
-    }
+    printDistances(maze, distances);
+
     return " ";
 }
 
@@ -324,8 +321,75 @@ void setAllWalls(int maze[WIDTH][HEIGHT]) {
 void printQueue(std::queue<std::pair<int,int>> queue) {
     std::cout << "FloodFill queue: ";
     while (!queue.empty()) {
-        std::cout << queue.front().first << queue.front().second << " ";
+        std::cout << "(" << queue.front().first << "," << queue.front().second << ")" << " ";
         queue.pop();
     }
     std::cout << std::endl;
+}
+
+// rough n dirty copy of printMaze except with directions ontop. 
+void printDistances(int maze[WIDTH][HEIGHT], int distances[WIDTH][HEIGHT]) {
+    //start in the top left and print going down. 
+    char output[3*WIDTH + 1][2*HEIGHT + 1];
+    //init all pixels in output as ' '
+    for (int j{0}; j < 2*HEIGHT + 1; j++) {
+        for (int i{0}; i < 3*WIDTH + 1; i++) {
+            output[i][j] = ' ';
+        }
+    }
+    //pour maze into output
+    for (int y{0}; y < HEIGHT; y++) {   
+        for (int x{0}; x < WIDTH; x++) {
+            //put walls in.
+            if (hasWall(maze[x][y], NORTH)) {
+                //north case
+                output[3*x+1][2*y+2] = '-';
+                output[3*x+2][2*y+2] = '-';
+            }
+            if (hasWall(maze[x][y], SOUTH)) {
+                //south case
+                output[3*x+1][2*y] = '-';
+                output[3*x+2][2*y] = '-';
+            }
+            if (hasWall(maze[x][y], EAST)) {
+                //east case                
+                output[3*x+3][2*y+1] = '|';
+            }
+            if (hasWall(maze[x][y], WEST)) {
+                //west case
+                output[3*x][2*y+1] = '|';
+            }
+            // //put goal and start in
+            // if (hasGoal(maze[x][y]) && hasStart(maze[x][y])) {
+            //     std::cout << "ERROR has both goal and Start: " << x << y << std::endl;
+            //     output[3*x+1][2*y+1] = 'G';
+            //     output[3*x+2][2*y+1] = 'G';
+            // }
+            // else if (hasGoal(maze[x][y])) {
+            //     output[3*x+1][2*y+1] = 'G';
+            //     output[3*x+2][2*y+1] = 'G';
+            // }
+            // else if (hasStart(maze[x][y])) {
+            //     output[3*x+1][2*y+1] = 'S';
+            //     output[3*x+2][2*y+1] = 'S';
+            // }
+            // put dir in. 
+            if (distances[x][y] >= 0 && distances[x][y] < 100) { 
+                output[3*x+1][2*y+1] = char(distances[x][y] / 10 % 10); // gets 10s column
+                output[3*x+2][2*y+1] = char(distances[x][y] % 10); // gets 1s column
+            }
+        }
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////
+
+
+    //print output
+    for (int j{2*HEIGHT}; j >= 0 ; j--) {     // this line is weird with the + 1 
+        for (int i{0}; i < 3*WIDTH + 1; i++) {
+            std::cout << output[i][j];
+        }
+        // std::cout << ' ' << j << std::endl; //vertical char numbers for debugging
+        std::cout << std::endl;
+    }
 }
