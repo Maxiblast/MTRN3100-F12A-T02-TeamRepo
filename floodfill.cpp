@@ -17,6 +17,8 @@
 //Good thing for how to install g++ so you can compile & run this. 
 //https://www.youtube.com/watch?v=1INYOToxdQY 
 
+
+std::string floodfill(int maze[WIDTH][HEIGHT]);
 void setWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cellA, std::pair<int,int> cellB);
 void removeWall(int maze[WIDTH][HEIGHT], std::pair<int,int> cell, int dir);
 int getDirTargetCell(std::pair<int,int> current, std::pair<int,int> target);
@@ -52,15 +54,16 @@ int main() {
     
     setAllWalls(maze);
 
-    // removeWall(maze, std::make_pair(3,3), NORTH);
-    removeWall(maze, std::make_pair(0,0), SOUTH);
-    // removeWall(maze, std::make_pair(3,3), EAST);
-    removeWall(maze, std::make_pair(0,0), WEST);
+    removeWall(maze, std::make_pair(1,0), NORTH);
+    removeWall(maze, std::make_pair(1,1), NORTH);
+    removeWall(maze, std::make_pair(1,2), NORTH);
 
-    setStart(maze, std::make_pair(0,0));
-    setGoal(maze, std::make_pair(0,3));
+    setStart(maze, std::make_pair(1,0));
+    setGoal(maze, std::make_pair(1,3));
 
     printMaze(maze);
+
+    floodfill(maze);
 
     return 0;
 }
@@ -96,7 +99,7 @@ std::string floodfill(int maze[WIDTH][HEIGHT]) {
             std::pair<int,int> curr2 = getCellFromDir(curr, dir);
             if (cellExists(curr2) && distances[curr2.first][curr2.second] == -1) {
                 distances[curr2.first][curr2.second] = distances[curr.first][curr.second] + 1; 
-                queue.push(make_pair(curr2.first, curr2.second));
+                queue.push(std::make_pair(curr2.first, curr2.second));
             } 
         }
         printQueue(queue);
@@ -312,11 +315,14 @@ void setAllWalls(int maze[WIDTH][HEIGHT]) {
 }
 
 //For floodfill function. 
-//Prints ever element in queue
+//Prints every element in queue
+//the default for std::queue is passed by value. 
+//This means this function will NOT impact the original queue. 
 void printQueue(std::queue<std::pair<int,int>> queue) {
     std::cout << "FloodFill queue: ";
-    for (auto& elem : queue) {
-        std::cout << elem.first << elem.second << " ";
+    while (!queue.empty()) {
+        std::cout << queue.front().first << queue.front().second << " ";
+        queue.pop();
     }
     std::cout << std::endl;
 }
