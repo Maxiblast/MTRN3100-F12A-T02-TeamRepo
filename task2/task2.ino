@@ -34,12 +34,13 @@ mtrn3100::PIDController controller(200,2,10);
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
 void setup() {
+  delay(1000);
   Serial.begin(9600);
   Wire.begin();
   mpu.begin();
   Serial.println("Calibrating IMU, keep still...");
   delay(1000);
-  mpu.calcOffsets();
+  mpu.calcOffsets(true);
   Serial.println("Done");
   delay(2000);
 }
