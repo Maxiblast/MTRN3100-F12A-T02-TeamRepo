@@ -27,7 +27,7 @@ public:
         
         //clamp radians as a pwm int. 
         int pwm_speed = int(output);
-        pwm_speed = constrain(pwm_speed, -255,255);
+        pwm_speed = constrain(pwm_speed, -160,160);
         return pwm_speed;
     }
 

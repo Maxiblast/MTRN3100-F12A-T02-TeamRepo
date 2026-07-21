@@ -14,16 +14,16 @@ void straightLineTracking(int targetDistance = 1) {
 
 void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
 
-    static mtrn3100::PIDController wallPID(1.5,0.0,0.3);
+    static mtrn3100::PIDController wallPID(85,10,7.6);
     wallPID.zeroAndSetTarget(0, targetDistanceMm);
 
     while (true) {
+        int currentDistance = frontlidar.readRangeSingleMillimeters();
+        
         if (frontlidar.timeoutOccurred()) {
             Serial.println("Lidar timeout!");
             continue;
         };
-
-        int currentDistance = frontlidar.readRangeSingleMillimeters();
 
         int pwm = -wallPID.compute(currentDistance);
 
@@ -37,11 +37,12 @@ void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
 
         motor1.setPWM(-pwm);
         motor2.setPWM(pwm);
-
-        if (fabs(wallPID.getError()) <= toleranceMm) {
+        
+        if (abs(wallPID.getError()) <= toleranceMm) {
             motor1.setPWM(0);
             motor2.setPWM(0);
-        }
+        continue;
+}
 
     }
 
