@@ -32,19 +32,19 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 //lidar
 VL6180X frontlidar;
-Wire.begin();
-frontlidar.init();
-frontLidar.configureDefault();
-frontLidar.setTimeout(500);
 
 //when more lidars added we need to also add a .setAddress 
 
 
 void setup() {
   Serial.begin(9600);
+  Wire.begin();
+  frontlidar.init();
+  frontlidar.configureDefault();
+  frontlidar.setTimeout(500);
 }
 
 void loop() {
-
+  maintainWallDistance(100, 5);
 }
 
