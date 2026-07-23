@@ -1,7 +1,6 @@
 #include "Encoder.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
-#include "task2_missions.hpp"
 #include "VL6180X.h"
 #include "Wire.h"
 
@@ -27,11 +26,12 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 //Constants
 #define TARGET_RAD 6.28
 #define WHEEL_DIAMETER 32.0
-#define DISTANCE_BETWEEN_WHEELS 85.0
+#define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
 //lidar
 VL6180X frontlidar;
+#include "task2_missions.hpp"
 
 //when more lidars added we need to also add a .setAddress 
 

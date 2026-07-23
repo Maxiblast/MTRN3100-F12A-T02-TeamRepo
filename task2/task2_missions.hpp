@@ -22,36 +22,39 @@ extern VL6180X frontlidar;
 
 void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
 
-/* Track lidar distance by a loop
-    Error = currentLidar - targetDistacneMm (not sure)
-    Drive forward if error is positive and backwards if error is negative
-    Make sure to reach the desired state in 10 seconds
-    */
-
-    static mtrn3100::PIDController wallPID(100,2,5);
+    static mtrn3100::PIDController wallPID(100,2,10);
     wallPID.zeroAndSetTarget(0, targetDistanceMm);
 
     while (true) {
+        int currentDistance = frontlidar.readRangeSingleMillimeters();
+        
         if (frontlidar.timeoutOccurred()) {
+            Serial.println("Lidar timeout!");
             continue;
         };
 
-        int currentDistance = frontlidar.readRangeSingleMillimeters();
-
         int pwm = -wallPID.compute(currentDistance);
+
+        //debug
+        // Serial.print("Lidar (mm): ");
+        // Serial.print(currentDistance);
+        // Serial.print(" | Error: ");
+        // Serial.print(wallPID.getError());
+        // Serial.print(" | PWM: ");
+        // Serial.println(pwm);
 
         motor1.setPWM(-pwm);
         motor2.setPWM(pwm);
-
-        if (fabs(wallPID.getError()) <= toleranceMm) {
+        
+        if (abs(wallPID.getError()) <= toleranceMm) {
             motor1.setPWM(0);
             motor2.setPWM(0);
+            continue;
         }
 
     }
 
 }
-
 // void turnImplementation() {
 
 // // Need to choose 1 method Lidar or IMU
