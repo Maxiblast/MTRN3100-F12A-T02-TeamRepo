@@ -35,7 +35,9 @@ MPU6050 mpu(Wire);
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
-
+struct Waypoint {
+  float x, y;
+};
 
 void setup() {
   delay(1000);
@@ -50,9 +52,13 @@ void setup() {
 }
 
 void loop() {
-  navigateTo(180, 0, 0);
-  navigateTo(180, 180, 0);
-  navigateTo(360, 180, 180);
+  Waypoint path[] = {
+    {0, 0},      // start (current position)
+    {180, 0},
+    {180, 180},
+    {360, 180},
+  };
+  purePursuitPath(path, 4, 0);  // 4 waypoints, final heading 0 degrees
   while (true) {};
 }
 
@@ -181,5 +187,87 @@ void navigateTo(float tx, float ty, float th_deg) {
 
   // rotate to final heading
   turnToHeading(th_deg);
+}
+
+void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
+  const float LOOKAHEAD = 75.0;
+  const float MAX_PWM = 160.0;
+  const float BASE_SPEED = 100.0;
+  const float GOAL_TOLERANCE = 10.0;
+
+  int current_segment = 0;  // which segment we're tracking
+
+  while (true) {
+    updateOdometry();
+
+    float rx = encoder_odometry.getX();
+    float ry = encoder_odometry.getY();
+    float rh = encoder_odometry.getH();
+
+    // final goal is the last waypoint
+    float final_x = waypoints[num_waypoints - 1].x;
+    float final_y = waypoints[num_waypoints - 1].y;
+    float dist_to_goal = sqrt((final_x-rx)*(final_x-rx) + (final_y-ry)*(final_y-ry));
+    if (dist_to_goal < GOAL_TOLERANCE) {
+      motor1.setPWM(0);
+      motor2.setPWM(0);
+      break;
+    }
+
+    // advance segment if robot has passed current waypoint
+    if (current_segment < num_waypoints - 2) {
+      float wx = waypoints[current_segment + 1].x;
+      float wy = waypoints[current_segment + 1].y;
+      float dist_to_next = sqrt((wx-rx)*(wx-rx) + (wy-ry)*(wy-ry));
+      if (dist_to_next < LOOKAHEAD) {
+        current_segment++;
+      }
+    }
+
+    // find lookahead point on current segment
+    float sx = waypoints[current_segment].x;
+    float sy = waypoints[current_segment].y;
+    float ex = waypoints[current_segment + 1].x;
+    float ey = waypoints[current_segment + 1].y;
+
+    float seg_dx = ex - sx;
+    float seg_dy = ey - sy;
+    float seg_len = sqrt(seg_dx*seg_dx + seg_dy*seg_dy);
+
+    // project robot position onto segment
+    float t = ((rx - sx) * seg_dx + (ry - sy) * seg_dy) / (seg_len * seg_len);
+    t = constrain(t, 0.0f, 1.0f);
+
+    // lookahead point along segment
+    float lookahead_t = t + LOOKAHEAD / seg_len;
+    lookahead_t = constrain(lookahead_t, 0.0f, 1.0f);
+    float lx = sx + lookahead_t * seg_dx;
+    float ly = sy + lookahead_t * seg_dy;
+
+    // transform to robot local frame
+    float cos_h = cos(rh);
+    float sin_h = sin(rh);
+    float local_x =  cos_h * (lx - rx) + sin_h * (ly - ry);
+    float local_y = -sin_h * (lx - rx) + cos_h * (ly - ry);
+
+    // curvature and wheel speeds
+    float l = sqrt(local_x*local_x + local_y*local_y);
+    float curvature = 2.0 * local_y / (l * l);
+
+    float left_pwm  = BASE_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+    float right_pwm = BASE_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+
+    left_pwm  = constrain(left_pwm,  -MAX_PWM, MAX_PWM);
+    right_pwm = constrain(right_pwm, -MAX_PWM, MAX_PWM);
+
+    motor1.setPWM(-left_pwm);
+    motor2.setPWM(right_pwm);
+
+    serialPrint();
+    delay(10);
+  }
+
+  // final heading correction
+  turnToHeading(final_heading_deg);
 }
 
