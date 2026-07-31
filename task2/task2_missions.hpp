@@ -1,5 +1,5 @@
 #pragma once
-#include <Arduino.h>
+extern SSD1306 display;#include <Arduino.h>
 #include <math.h>
 #include "Motor.hpp"
 #include "PIDController.hpp"
@@ -20,7 +20,7 @@ extern VL6180X frontlidar;
 
 // }
 
-void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
+void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 10) {
 
     static mtrn3100::PIDController wallPID(100,2,10);
     wallPID.zeroAndSetTarget(0, targetDistanceMm);
@@ -36,15 +36,15 @@ void maintainWallDistance(int targetDistanceMm = 100, int toleranceMm = 5) {
         int pwm = -wallPID.compute(currentDistance);
 
         //debug
-        // Serial.print("Lidar (mm): ");
-        // Serial.print(currentDistance);
-        // Serial.print(" | Error: ");
-        // Serial.print(wallPID.getError());
-        // Serial.print(" | PWM: ");
-        // Serial.println(pwm);
+        // display.clear();
+        // display.setCaret(0,0);
+        // display.print(abs(wallPID.getError()));
+        // display.update();
 
         motor1.setPWM(-pwm);
         motor2.setPWM(pwm);
+
+        
         
         if (abs(wallPID.getError()) <= toleranceMm) {
             motor1.setPWM(0);

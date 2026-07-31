@@ -3,6 +3,7 @@
 #include "PIDController.hpp"
 #include "VL6180X.h"
 #include "Wire.h"
+#include "SSD1306.h"
 
 //Motors 
 #define MOT1PWM 11
@@ -35,6 +36,8 @@ VL6180X frontlidar;
 
 //when more lidars added we need to also add a .setAddress 
 
+//display
+SSD1306 display;
 
 void setup() {
   Serial.begin(9600);
@@ -42,6 +45,15 @@ void setup() {
   frontlidar.init();
   frontlidar.configureDefault();
   frontlidar.setTimeout(500);
+<<<<<<< HEAD
+=======
+
+  display.init();
+  display.clear();
+  display.update();
+
+  maintainWallDistance();
+>>>>>>> fb972fd (changed values for PID)
 }
 
 void loop() {
