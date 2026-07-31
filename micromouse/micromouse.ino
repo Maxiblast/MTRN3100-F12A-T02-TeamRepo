@@ -56,9 +56,13 @@ void loop() {
     {0, 0},      // start (current position)
     {180, 0},
     {180, 180},
-    {360, 180},
+    {720, 180},
+    {720, 0},
+    {360, 0},
+    {360, -180},
+    {540, -180}
   };
-  purePursuitPath(path, 4, 0);  // 4 waypoints, final heading 0 degrees
+  purePursuitPath(path, 8, 0);  // 4 waypoints, final heading 0 degrees
   while (true) {};
 }
 
@@ -191,9 +195,9 @@ void navigateTo(float tx, float ty, float th_deg) {
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
   const float LOOKAHEAD = 75.0;
-  const float MAX_PWM = 160.0;
-  const float BASE_SPEED = 100.0;
-  const float GOAL_TOLERANCE = 10.0;
+  const float MAX_PWM = 130.0;
+  const float BASE_SPEED = 60.0;
+  const float GOAL_TOLERANCE = 5.0;
 
   int current_segment = 0;  // which segment we're tracking
 
