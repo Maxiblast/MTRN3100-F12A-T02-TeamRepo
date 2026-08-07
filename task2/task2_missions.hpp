@@ -56,10 +56,20 @@ void straightLineTracking() {
 
     const float kLateral = 0.15;   
 
+    float prev_time = 0;
+    float curr_time = 0;
+    float dt = 0;
+
     while (millis() - startTime < timeout) {
 
         mpu.update();
         float currYaw = mpu.getAngleZ();
+
+
+        curr_time = micros();
+        dt = static_cast<float>(curr_time - prev_time)/1e6;
+        prev_time = curr_time;
+
 
         float leftDist  = encoder1.getRotation() * WHEEL_RADIUS_MM;
         float rightDist = encoder2.getRotation() * WHEEL_RADIUS_MM;
@@ -79,7 +89,7 @@ void straightLineTracking() {
 
         if (abs(error) < 1.0) error = 0;
 
-        integralError += error * 0.01;
+        integralError += error * dt;
         integralError = constrain(integralError, -20, 20);
 
         float correction = kp * error + ki * integralError;

@@ -1,0 +1,262 @@
+import argparse
+import collections
+import cv2
+import numpy as np
+ 
+N = 9  # grid is always 9x9 per spec section 1.2
+
+image_path = "image.jpeg"
+ 
+# ----------------------------------------------------------------------
+# 1. Locate the maze and rectify it to a straight-on square image
+# ----------------------------------------------------------------------
+def find_maze_corners(gray):
+    """Find the 4 outer corners of the maze frame (square, even though the
+    physical frame has chamfered/cut corners for bracing)."""
+    _, th = cv2.threshold(gray, 140, 255, cv2.THRESH_BINARY)
+    th = cv2.morphologyEx(th, cv2.MORPH_CLOSE, np.ones((15, 15), np.uint8))
+    contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    c = max(contours, key=cv2.contourArea)
+    peri = cv2.arcLength(c, True)
+    approx = cv2.approxPolyDP(c, 0.01 * peri, True).reshape(-1, 2)
+    if len(approx) != 4:
+        # fall back to minAreaRect if the polygon isn't a clean quad
+        rect = cv2.minAreaRect(c)
+        approx = cv2.boxPoints(rect)
+ 
+    # order points as TL, TR, BR, BL
+    s = approx.sum(axis=1)
+    d = np.diff(approx, axis=1).flatten()
+    tl = approx[np.argmin(s)]
+    br = approx[np.argmax(s)]
+    tr = approx[np.argmin(d)]
+    bl = approx[np.argmax(d)]
+    return np.array([tl, tr, br, bl], dtype=np.float32)
+ 
+ 
+def rectify(img, corners, size=900):
+    dst = np.array([[0, 0], [size, 0], [size, size], [0, size]], dtype=np.float32)
+    M = cv2.getPerspectiveTransform(corners, dst)
+    return cv2.warpPerspective(img, M, (size, size)), M
+ 
+# ----------------------------------------------------------------------
+# 2. Detect walls on the rectified image and build the grid graph
+# ----------------------------------------------------------------------
+def detect_walls(warp, margin_frac=0.053, chamfer_frac=0.19):
+    """Returns walls[r][c] = {'N':bool,'S':bool,'E':bool,'W':bool}."""
+    gray = cv2.cvtColor(warp, cv2.COLOR_BGR2GRAY) if warp.ndim == 3 else warp
+    S = gray.shape[0]
+    margin = int(S * margin_frac)
+    x0 = y0 = margin
+    x1 = y1 = S - margin
+    roi = gray[y0:y1, x0:x1]
+    cellw = (x1 - x0) / N
+    cellh = (y1 - y0) / N
+ 
+    _, mask = cv2.threshold(roi, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+ 
+    # blank out the chamfered corner braces (not real maze walls)
+    H, W = mask.shape
+    chamfer = int(min(H, W) * chamfer_frac)
+    for pts in ([[0, 0], [chamfer, 0], [0, chamfer]],
+                [[W, 0], [W - chamfer, 0], [W, chamfer]],
+                [[0, H], [chamfer, H], [0, H - chamfer]],
+                [[W, H], [W - chamfer, H], [W, H - chamfer]]):
+        cv2.fillPoly(mask, [np.array(pts)], 0)
+ 
+    walls = [[{'N': False, 'S': False, 'E': False, 'W': False} for _ in range(N)] for _ in range(N)]
+ 
+    def frac_white(ya, yb, xa, xb):
+        ya, yb = max(ya, 0), min(yb, mask.shape[0])
+        xa, xb = max(xa, 0), min(xb, mask.shape[1])
+        if yb <= ya or xb <= xa:
+            return 0.0
+        return (mask[ya:yb, xa:xb] > 0).mean()
+ 
+    half_th = 9
+    len_frac = 0.75
+    thresh = 0.22
+ 
+    for line in range(N + 1):
+        y = line * cellh
+        for c in range(N):
+            cx = (c + 0.5) * cellw
+            half_len = cellw * len_frac / 2
+            if frac_white(int(y - half_th), int(y + half_th), int(cx - half_len), int(cx + half_len)) > thresh:
+                if line > 0:
+                    walls[line - 1][c]['S'] = True
+                if line < N:
+                    walls[line][c]['N'] = True
+ 
+    for line in range(N + 1):
+        x = line * cellw
+        for r in range(N):
+            cy = (r + 0.5) * cellh
+            half_len = cellh * len_frac / 2
+            if frac_white(int(cy - half_len), int(cy + half_len), int(x - half_th), int(x + half_th)) > thresh:
+                if line > 0:
+                    walls[r][line - 1]['E'] = True
+                if line < N:
+                    walls[r][line]['W'] = True
+ 
+    # the maze is fully enclosed - force outer boundary walls regardless of
+    # detection noise near the chamfered corners
+    for c in range(N):
+        walls[0][c]['N'] = True
+        walls[N - 1][c]['S'] = True
+    for r in range(N):
+        walls[r][0]['W'] = True
+        walls[r][N - 1]['E'] = True
+ 
+    return walls, (x0, y0, x1, y1)
+ 
+ 
+# ----------------------------------------------------------------------
+# 3. BFS shortest path on the grid graph
+# ----------------------------------------------------------------------
+DELTA = {'N': (-1, 0), 'S': (1, 0), 'E': (0, 1), 'W': (0, -1)}
+OPPOSITE = {'N': 'S', 'S': 'N', 'E': 'W', 'W': 'E'}
+ 
+ 
+def bfs(walls, start_rc, goal_rc):
+    q = collections.deque([start_rc])
+    prev = {start_rc: None}
+    while q:
+        cur = q.popleft()
+        if cur == goal_rc:
+            break
+        r, c = cur
+        for d, (dr, dc) in DELTA.items():
+            if walls[r][c][d]:
+                continue  
+            nr, nc = r + dr, c + dc
+            if not (0 <= nr < N and 0 <= nc < N):
+                continue
+            nxt = (nr, nc)
+            if nxt not in prev:
+                prev[nxt] = cur
+                q.append(nxt)
+    if goal_rc not in prev:
+        return None
+    path = [goal_rc]
+    while path[-1] != start_rc:
+        path.append(prev[path[-1]])
+    path.reverse()
+    return path
+ 
+ 
+# ----------------------------------------------------------------------
+# 4. Convert cell path -> forward/turn command string
+# ----------------------------------------------------------------------
+TURN_ORDER = ['N', 'E', 'S', 'W']  # clockwise
+ 
+ 
+def path_to_commands(path, start_dir):
+    facing = start_dir
+    commands = []
+    for a, b in zip(path, path[1:]):
+        dr, dc = b[0] - a[0], b[1] - a[1]
+        needed = next(d for d, delta in DELTA.items() if delta == (dr, dc))
+        i_have, i_need = TURN_ORDER.index(facing), TURN_ORDER.index(needed)
+        diff = (i_need - i_have) % 4
+        if diff == 1:
+            commands.append('R')
+        elif diff == 3:
+            commands.append('L')
+        elif diff == 2:
+            commands.extend(['R', 'R'])  # 180 degree turn
+        commands.append('F')
+        facing = needed
+    return commands
+ 
+ 
+# ----------------------------------------------------------------------
+# 5. Visualisation for the demonstrator
+# ----------------------------------------------------------------------
+def draw_solution(orig_img, corners, roi_box, path, size=900):
+    warp_vis = cv2.warpPerspective(orig_img, cv2.getPerspectiveTransform(
+        corners, np.array([[0, 0], [size, 0], [size, size], [0, size]], dtype=np.float32)), (size, size))
+    x0, y0, x1, y1 = roi_box
+    cellw, cellh = (x1 - x0) / N, (y1 - y0) / N
+    pts = [(int(x0 + (c + 0.5) * cellw), int(y0 + (r + 0.5) * cellh)) for r, c in path]
+    for p1, p2 in zip(pts, pts[1:]):
+        cv2.line(warp_vis, p1, p2, (0, 0, 255), 4)
+    for p in (pts[0], pts[-1]):
+        cv2.circle(warp_vis, p, 10, (0, 255, 0), -1)
+    return warp_vis
+ 
+ 
+# ----------------------------------------------------------------------
+def solve(image_path, start, goal, out_path='solution.png', wall_overrides=None):
+    """start = (row, col, direction), goal = (row, col)
+    wall_overrides: optional dict {(row,col): {'N':bool,'S':bool,'E':bool,'W':bool}}
+    to patch specific cells if you spot a CV mis-detection when you check
+    the debug wall overlay against the photo (see debug_walls() below).
+    """
+    img = cv2.imread(image_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+ 
+    corners = find_maze_corners(gray)
+    warp, _ = rectify(img, corners)
+    walls, roi_box = detect_walls(warp)
+ 
+    if wall_overrides:
+        for (r, c), patch in wall_overrides.items():
+            walls[r][c].update(patch)
+ 
+    start_rc = (start[0], start[1])
+    goal_rc = goal
+    path = bfs(walls, start_rc, goal_rc)
+    if path is None:
+        raise RuntimeError('No path found between start and goal - check CV wall detection / coordinates')
+ 
+    commands = path_to_commands(path, start[2])
+    vis = draw_solution(img, corners, roi_box, path)
+    cv2.imwrite(out_path, vis)
+ 
+    return commands, path, vis
+ 
+ 
+def debug_walls_image(image_path, out_path='walls_debug.png'):
+    """Render the detected wall grid over the photo so you can visually
+    spot-check it against the real maze before committing to a run."""
+    img = cv2.imread(image_path)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    corners = find_maze_corners(gray)
+    warp, M = rectify(img, corners)
+    walls, (x0, y0, x1, y1) = detect_walls(warp)
+    cellw, cellh = (x1 - x0) / N, (y1 - y0) / N
+    vis = warp.copy()
+    for r in range(N):
+        for c in range(N):
+            cx0, cy0 = x0 + c * cellw, y0 + r * cellh
+            cx1, cy1 = cx0 + cellw, cy0 + cellh
+            w = walls[r][c]
+            if w['N']:
+                cv2.line(vis, (int(cx0), int(cy0)), (int(cx1), int(cy0)), (0, 0, 255), 3)
+            if w['S']:
+                cv2.line(vis, (int(cx0), int(cy1)), (int(cx1), int(cy1)), (0, 0, 255), 3)
+            if w['W']:
+                cv2.line(vis, (int(cx0), int(cy0)), (int(cx0), int(cy1)), (0, 0, 255), 3)
+            if w['E']:
+                cv2.line(vis, (int(cx1), int(cy0)), (int(cx1), int(cy1)), (0, 0, 255), 3)
+    cv2.imwrite(out_path, vis)
+    return walls
+ 
+ 
+if __name__ == '__main__':
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--image', default='image.jpeg')
+    ap.add_argument('--start', nargs=3, metavar=('ROW', 'COL', 'DIR'), default=['0', '0', 'N'])
+    ap.add_argument('--goal', nargs=2, metavar=('ROW', 'COL'), default=['8', '8'])
+    ap.add_argument('--out', default='solution.png')
+    args = ap.parse_args()
+ 
+    start = (int(args.start[0]), int(args.start[1]), args.start[2].upper())
+    goal = (int(args.goal[0]), int(args.goal[1]))
+ 
+    commands, path, _ = solve(args.image, start, goal, args.out)
+    print('Path (row,col):', path)
+    print('Commands:', ''.join(commands))
