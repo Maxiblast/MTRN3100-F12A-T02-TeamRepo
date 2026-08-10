@@ -2,15 +2,17 @@
 #include "EncoderOdometry.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
+#include "VelocityController.hpp"
 #include <Wire.h>
 #include <MPU6050_light.h>
 
 
-//Motors 
+//Motors
 #define MOT1PWM 11
 #define MOT1DIR 12
 #define MOT2PWM 9
 #define MOT2DIR 10
+#define MAX_PWM 130
 mtrn3100::Motor motor1(MOT1PWM,MOT1DIR);
 mtrn3100::Motor motor2(MOT2PWM,MOT2DIR);
 mtrn3100::EncoderOdometry encoder_odometry(16,100);
@@ -25,6 +27,10 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 //Controllers
 mtrn3100::PIDController controller(200,2,10);
+// TODO: tune on hardware - start with ki=kd=0, raise kp until measured velocity tracks target
+// without overshoot, then add ki to kill steady-state error.
+mtrn3100::VelocityController leftVelocityController(15, 0, 0, MAX_PWM);
+mtrn3100::VelocityController rightVelocityController(15, 0, 0, MAX_PWM);
 
 // IMU
 MPU6050 mpu(Wire);
@@ -41,7 +47,7 @@ struct Waypoint {
 
 void setup() {
   delay(1000);
-  Serial.begin(9600);
+  Serial.begin(115200);
   Wire.begin();
   mpu.begin();
   Serial.println("Calibrating IMU, keep still...");
@@ -56,18 +62,18 @@ void loop() {
     {0, 0},      // start (current position)
     {180, 0},
     {180, 180},
-    {720, 180},
-    {720, 0},
-    {360, 0},
-    {360, -180},
-    {540, -180}
+    {360, 180}
   };
-  purePursuitPath(path, 8, 0);  // 4 waypoints, final heading 0 degrees
+  purePursuitPath(path, 4, 0);  // 4 waypoints, final heading 0 degrees
   while (true) {};
 }
 
 void updateOdometry() {
-  encoder_odometry.update(encoder1.getRotation(), encoder2.getRotation());
+  mpu.update();
+  // NOTE: if fused heading drifts the opposite way to the encoder-only heading, this mounting
+  // has gyro-Z reading CW-positive - negate it here.
+  float imu_heading_rad = mpu.getAngleZ() * PI / 180.0;
+  encoder_odometry.update(encoder1.getRotation(), encoder2.getRotation(), imu_heading_rad);
 }
 
 void serialPrint() {
@@ -195,11 +201,14 @@ void navigateTo(float tx, float ty, float th_deg) {
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
   const float LOOKAHEAD = 75.0;
-  const float MAX_PWM = 130.0;
-  const float BASE_SPEED = 60.0;
+  // TODO: tune on hardware - target wheel angular velocity (rad/s), not a PWM guess.
+  // Bumped from 4.0: that only needed ~20-30/130 PWM to hold, so there was plenty of headroom unused.
+  const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
   int current_segment = 0;  // which segment we're tracking
+  leftVelocityController.reset(encoder1.getRotation());
+  rightVelocityController.reset(encoder2.getRotation());
 
   while (true) {
     updateOdometry();
@@ -254,20 +263,32 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float local_x =  cos_h * (lx - rx) + sin_h * (ly - ry);
     float local_y = -sin_h * (lx - rx) + cos_h * (ly - ry);
 
-    // curvature and wheel speeds
+    // curvature -> target wheel angular velocities (reference generator's job stops here)
     float l = sqrt(local_x*local_x + local_y*local_y);
+    if (l < 1.0) l = 1.0;  // guard against the lookahead point collapsing onto the robot near a waypoint
     float curvature = 2.0 * local_y / (l * l);
 
-    float left_pwm  = BASE_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
-    float right_pwm = BASE_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+    // clamp so the inner wheel target never flips sign (min turn radius = DISTANCE_BETWEEN_WHEELS/2)
+    const float MAX_CURVATURE = 2.0 / DISTANCE_BETWEEN_WHEELS;
+    curvature = constrain(curvature, -MAX_CURVATURE, MAX_CURVATURE);
 
-    left_pwm  = constrain(left_pwm,  -MAX_PWM, MAX_PWM);
-    right_pwm = constrain(right_pwm, -MAX_PWM, MAX_PWM);
+    float left_wheel_speed  = TARGET_WHEEL_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+    float right_wheel_speed = TARGET_WHEEL_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+
+    // velocity controller's job: hit that target using measured wheel speed, not an open-loop guess
+    int16_t left_pwm  = leftVelocityController.compute(encoder1.getRotation(), left_wheel_speed);
+    int16_t right_pwm = rightVelocityController.compute(encoder2.getRotation(), right_wheel_speed);
 
     motor1.setPWM(-left_pwm);
     motor2.setPWM(right_pwm);
 
     serialPrint();
+    Serial.print("L: target="); Serial.print(left_wheel_speed);
+    Serial.print(" measured="); Serial.print(leftVelocityController.getMeasuredVelocity());
+    Serial.print(" pwm="); Serial.print(left_pwm);
+    Serial.print("\t\tR: target="); Serial.print(right_wheel_speed);
+    Serial.print(" measured="); Serial.print(rightVelocityController.getMeasuredVelocity());
+    Serial.print(" pwm="); Serial.println(right_pwm);
     delay(10);
   }
 
