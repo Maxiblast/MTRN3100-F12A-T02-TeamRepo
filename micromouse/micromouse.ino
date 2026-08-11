@@ -40,6 +40,8 @@ MPU6050 mpu(Wire);
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
+#define CELL_SIZE 180.0
+#define MAX_WAYPOINTS 32
 
 struct Waypoint {
   float x, y;
@@ -58,14 +60,48 @@ void setup() {
 }
 
 void loop() {
-  Waypoint path[] = {
-    {0, 0},      // start (current position)
-    {180, 0},
-    {180, 180},
-    {360, 180}
-  };
-  purePursuitPath(path, 4, 0);  // 4 waypoints, final heading 0 degrees
+  const char* commands = "F,L,F,L,F,L,F,L,F";
+
+  Waypoint waypoints[MAX_WAYPOINTS];
+  float final_heading_deg = 0;
+  int numWaypoints = generateWaypointsFromCommands(commands, waypoints, MAX_WAYPOINTS, &final_heading_deg);
+
+  purePursuitPath(waypoints, numWaypoints, final_heading_deg);
   while (true) {};
+}
+
+int generateWaypointsFromCommands(const char* commands, Waypoint* waypoints, int maxWaypoints, float* finalHeadingDeg) {
+  float x = 0, y = 0;
+  float heading_deg = 0;
+  int count = 0;
+  waypoints[count++] = {x, y};
+
+  for (int i = 0; commands[i] != '\0'; i++) {
+    switch (commands[i]) {
+      case 'F': {
+        float heading_rad = heading_deg * PI / 180.0;
+        x += CELL_SIZE * cos(heading_rad);
+        y += CELL_SIZE * sin(heading_rad);
+        if (count < maxWaypoints) {
+          waypoints[count++] = {x, y};
+        } 
+        break;
+      }
+      case 'L':
+        heading_deg += 90;
+        break;
+      case 'R':
+        heading_deg -= 90;
+        break;
+      case ',':
+      case ' ':
+        break;
+      default:
+        break;
+    }
+  }
+  *finalHeadingDeg = heading_deg;
+  return count;
 }
 
 void updateOdometry() {
