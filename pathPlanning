@@ -19,23 +19,43 @@ def open_image(path):
     except Exception as e:
         print(f"(Could not auto-open {path}: {e}. Open it manually.)")
 
-IMAGE_PATH   = "Image.jpeg"   
-START_CELL   = (0, 2)       
-GOAL_CELL    = (8, 6)       
-START_HEADING = "S"         
+IMAGE_PATH   = "2ndImage.jpg"   
+START_CELL   = (3, 0)       
+GOAL_CELL    = (7, 3)       
+# 2, 7.  0, 5 & 7,4
+START_HEADING = "N"         
                             
 OUTPUT_PREFIX = "maze_run"  
 
 def load_and_crop(image_path):
     img = cv2.imread(image_path)
+
     if img is None:
         raise FileNotFoundError(f"Could not read image: {image_path}")
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+    # Detect the bright board/background
     _, bright = cv2.threshold(gray, 140, 255, cv2.THRESH_BINARY)
-    contours, _ = cv2.findContours(bright, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    contours, _ = cv2.findContours(
+        bright,
+        cv2.RETR_EXTERNAL,
+        cv2.CHAIN_APPROX_SIMPLE
+    )
+
+    if not contours:
+        raise RuntimeError("Could not detect the maze board.")
+
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
     x, y, w, h = cv2.boundingRect(contours[0])
-    crop = img[y:y + h, x:x + w]
+    padding = 40
+    x1 = max(0, x - padding)
+    y1 = max(0, y - padding)
+    x2 = min(img.shape[1], x + w + padding)
+    y2 = min(img.shape[0], y + h + padding)
+    crop = img[y1:y2, x1:x2]
+
     return crop
 
 def detect_grid(crop):
