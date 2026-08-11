@@ -27,6 +27,8 @@ public:
     lastRPos = rightValue;
   }
 
+  void setHeading(float headingRad) { h = headingRad; }
+
   float getX() const { return x; }
   float getY() const { return y; }
   float getH() const { return h; }

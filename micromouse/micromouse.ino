@@ -60,7 +60,7 @@ void setup() {
 }
 
 void loop() {
-  const char* commands = "F,L,F,L,F,L,F,L,F";
+  const char* commands = "R,R,F,F,F,F,R,F,L,F,R,F,L,F,R,R";
 
   Waypoint waypoints[MAX_WAYPOINTS];
   float final_heading_deg = 0;
@@ -104,12 +104,19 @@ int generateWaypointsFromCommands(const char* commands, Waypoint* waypoints, int
   return count;
 }
 
+float imuHeadingOffsetRad = 0;
+
 void updateOdometry() {
   mpu.update();
   // NOTE: if fused heading drifts the opposite way to the encoder-only heading, this mounting
   // has gyro-Z reading CW-positive - negate it here.
-  float imu_heading_rad = mpu.getAngleZ() * PI / 180.0;
-  encoder_odometry.update(encoder1.getRotation(), encoder2.getRotation(), imu_heading_rad);
+  float imuHeadingRad = mpu.getAngleZ() * PI / 180.0 - imuHeadingOffsetRad;
+  encoder_odometry.update(encoder1.getRotation(), encoder2.getRotation(), imuHeadingRad);
+}
+
+void resyncHeadingToKnown(float knownHeadingRad) {
+  encoder_odometry.setHeading(knownHeadingRad);
+  imuHeadingOffsetRad = mpu.getAngleZ() * PI / 180.0 - knownHeadingRad;
 }
 
 void serialPrint() {
@@ -236,10 +243,10 @@ void navigateTo(float tx, float ty, float th_deg) {
 }
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
-  const float LOOKAHEAD = 75.0;
+  const float LOOKAHEAD = 50.0;
   // TODO: tune on hardware - target wheel angular velocity (rad/s), not a PWM guess.
   // Bumped from 4.0: that only needed ~20-30/130 PWM to hold, so there was plenty of headroom unused.
-  const float TARGET_WHEEL_SPEED = 10.0;
+  const float TARGET_WHEEL_SPEED = 20.0;
   const float GOAL_TOLERANCE = 5.0;
 
   int current_segment = 0;  // which segment we're tracking
@@ -311,9 +318,13 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float left_wheel_speed  = TARGET_WHEEL_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
     float right_wheel_speed = TARGET_WHEEL_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
 
+    if (fabs(curvature) == 0) {
+      resyncHeadingToKnown(atan2(seg_dy, seg_dx));
+    }
+
     // velocity controller's job: hit that target using measured wheel speed, not an open-loop guess
-    int16_t left_pwm  = leftVelocityController.compute(encoder1.getRotation(), left_wheel_speed);
-    int16_t right_pwm = rightVelocityController.compute(encoder2.getRotation(), right_wheel_speed);
+    int left_pwm  = leftVelocityController.compute(encoder1.getRotation(), left_wheel_speed);
+    int right_pwm = rightVelocityController.compute(encoder2.getRotation(), right_wheel_speed);
 
     motor1.setPWM(-left_pwm);
     motor2.setPWM(right_pwm);
