@@ -1,7 +1,8 @@
 #pragma once
 
-const int MAZE_WIDTH = 9;
-const int MAZE_HEIGHT = MAZE_WIDTH;
+#include <utility>
+
+const int MAZE_SIZE = 9;
 
 enum direction {
     NORTH,
@@ -11,12 +12,18 @@ enum direction {
 };
 
 class Maze {
-    void addWall(std::pair<int,int> pos, enum dir);
-    void addWall(std::pair<float,float> pos, enum dir);
-    void removeWall(std::pair<int,int> pos, enum dir);
+public:
+    Maze();
+    
+    void addWall(std::pair<int, int> pos, direction dir);
+    void addWall(std::pair<float, float> pos, direction dir);
+    void removeWall(std::pair<int, int> pos, direction dir);
+    bool isWall(std::pair<int, int> pos, direction dir) const;
+    void printMaze() const;
+    void mazeLoad();
 
-    int vertical_walls[MAZE_WIDTH + 1];
-    int horizontal_walls[MAZE_HEIGHT + 1];
+private:
+    int vertical_walls[MAZE_SIZE];
+    int horizontal_walls[MAZE_SIZE];
+    void setWallBit(int& row, int bit, bool value);
 };
-
-

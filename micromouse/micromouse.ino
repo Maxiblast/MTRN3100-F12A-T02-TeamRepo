@@ -2,6 +2,9 @@
 #include "EncoderOdometry.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
+#include "maze.hpp"
+#include "maze_planner.hpp"
+#include "waypoint.hpp"
 #include <Wire.h>
 #include <MPU6050_light.h>
 #include <VL6180X.h>
@@ -68,9 +71,19 @@ LidarID activeLidar = LIDAR_NONE;
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 const int WALL_LENGTH = 180;
 
-struct Waypoint {
-  float x, y;
-};
+// Autonomous mapping start / goal (hard-coded per competition rules).
+const int START_I = 0;
+const int START_J = 0;
+const int GOAL_I = 4;
+const int GOAL_J = 7;
+const direction START_HEADING = SOUTH;
+
+Maze maze;
+MazePlanner mazePlanner(maze);
+Waypoint shortest_path[MAX_SHORTEST_PATH];
+int shortest_path_len = 0;
+
+const float WALL_DETECT_MM = 120.0f;
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -91,6 +104,12 @@ int findCenterDirection(LidarID selectedLidar);
 LidarID findClosestLidar();
 bool centerOnClosestSurface();
 const char* lidarName(LidarID lidar);
+direction turnLeft(direction dir);
+direction turnRight(direction dir);
+void senseAndUpdateWalls(int ci, int cj, direction heading);
+void driveOneCell(direction dir);
+bool runAutonomousMapping();
+void printShortestPath();
 
 void setup() {
   delay(1000);
@@ -116,13 +135,134 @@ void setup() {
 }
 
 void loop() {
-    // Waypoint curr_path[] = calcPath(curr_pos, end_pos)
+  static bool missionDone = false;
+  if (!missionDone) {
+    missionDone = runAutonomousMapping();
+  }
+}
 
+direction turnLeft(direction dir) {
+  switch (dir) {
+    case NORTH: return WEST;
+    case EAST: return NORTH;
+    case SOUTH: return EAST;
+    case WEST: return SOUTH;
+  }
+  return NORTH;
+}
 
-    if (inCenter()) {
+direction turnRight(direction dir) {
+  switch (dir) {
+    case NORTH: return EAST;
+    case EAST: return SOUTH;
+    case SOUTH: return WEST;
+    case WEST: return NORTH;
+  }
+  return NORTH;
+}
 
-        displayUpdate()
+void senseAndUpdateWalls(int ci, int cj, direction heading) {
+  const direction absDirs[3] = {
+    heading,
+    turnRight(heading),
+    turnLeft(heading)
+  };
+  const LidarID lidars[3] = {
+    LIDAR_FRONT,
+    LIDAR_RIGHT,
+    LIDAR_LEFT
+  };
+
+  for (int k = 0; k < 3; ++k) {
+    if (readFilteredLidar(lidars[k]) < WALL_DETECT_MM) {
+      maze.addWall({ci, cj}, absDirs[k]);
     }
+  }
+}
+
+void driveOneCell(direction dir) {
+  turnToHeading(MazePlanner::directionToHeading(dir));
+  driveForward(static_cast<float>(WALL_LENGTH));
+}
+
+void printShortestPath() {
+  Serial.print("Shortest path (");
+  Serial.print(shortest_path_len);
+  Serial.println(" waypoints):");
+  for (int k = 0; k < shortest_path_len; ++k) {
+    Serial.print("  ");
+    Serial.print(k);
+    Serial.print(": (");
+    Serial.print(shortest_path[k].x);
+    Serial.print(", ");
+    Serial.print(shortest_path[k].y);
+    Serial.println(")");
+  }
+}
+
+bool runAutonomousMapping() {
+  maze.mazeLoad();
+  mazePlanner.resetExplore();
+
+  int ci = START_I;
+  int cj = START_J;
+  direction heading = START_HEADING;
+
+  mazePlanner.markVisited(ci, cj);
+  senseAndUpdateWalls(ci, cj, heading);
+
+  Serial.println("Starting DFS exploration...");
+  while (true) {
+    direction moveDir = NORTH;
+    const ExploreStep step = mazePlanner.getNextExploreMove(ci, cj, moveDir);
+
+    Serial.print("Map ");
+    Serial.print(mazePlanner.visitPercent());
+    Serial.println("% complete");
+
+    if (step == ExploreStep::DONE) {
+      Serial.println("DFS exploration complete.");
+      break;
+    }
+
+    driveOneCell(moveDir);
+    heading = moveDir;
+
+    if (!MazePlanner::neighbour(ci, cj, moveDir, ci, cj)) {
+      Serial.println("ERROR: move left maze bounds.");
+      return true;
+    }
+
+    senseAndUpdateWalls(ci, cj, heading);
+
+    if (ci == GOAL_I && cj == GOAL_J) {
+      Serial.println("Goal cell reached during exploration.");
+    }
+  }
+
+  Serial.println("Running BFS for shortest path...");
+  if (!mazePlanner.computeShortestPath(
+        {START_I, START_J},
+        {GOAL_I, GOAL_J},
+        shortest_path,
+        shortest_path_len,
+        MAX_SHORTEST_PATH,
+        static_cast<float>(WALL_LENGTH))) {
+    Serial.println("ERROR: BFS could not find a path to the goal.");
+    shortest_path_len = 0;
+    return true;
+  }
+
+  printShortestPath();
+  maze.printMaze();
+  return true;
+}
+
+// =========================================================
+// INITIALISE ALL THREE LIDARS
+// =========================================================
+
+void initialiseLidars() {
 
 
 
@@ -1022,13 +1162,4 @@ bool centerOnClosestSurface() {
 
 
 
-Waypoints* calcPath(Maze maze, std::pair<float,float> curr_pos, std::pair<float,float> end_pos) {
-    std::pair<int,int> curr_cell = getCellFromPos(curr_pos);
-    std::pair<int,int> end_cell = getCellFromPos(end_pos);
-    
-}
 
-//returns cell robot is in based on current global pos. 
-std::pair<int, int> getCellFromPos(std::pair<float,float> curr_pos) {
-    return std::make_pair(curr_pos.first() % WALL_LENGTH, curr_pos.second() % WALL_LENGTH)
-}
