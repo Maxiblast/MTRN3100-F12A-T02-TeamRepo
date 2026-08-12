@@ -66,6 +66,7 @@ LidarID activeLidar = LIDAR_NONE;
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
+const int WALL_LENGTH = 180;
 
 struct Waypoint {
   float x, y;
@@ -109,60 +110,86 @@ void setup() {
 
   Serial.println("IMU calibration done");
   delay(2000);
+
+  //updatePosUsingLidar   << placeholder for trysthan's centering code. 
+
 }
 
 void loop() {
-  static bool pathCompleted = false;
-
-  if (!pathCompleted) {
-    pathCompleted = true;
-
-    // Replace these coordinates with your required waypoints (mm).
-    Waypoint path[] = {
-      {0.0,   0.0},
-      {180.0, 0.0},
-      {360.0, 0.0},
-      {360.0, -180.0}
-    };
-
-    int numberOfWaypoints =
-      sizeof(path) / sizeof(path[0]);
-
-    purePursuitPath(
-      path,
-      numberOfWaypoints,
-      90.0
-    );
-
-    stopRobot();
-    Serial.println("Waypoint path complete");
-  }
-}
+    // Waypoint curr_path[] = calcPath(curr_pos, end_pos)
 
 
-// =========================================================
-// START ONE LIDAR
-// =========================================================
+    if (inCenter()) {
 
-bool startLidar(
-  VL6180X &lidar,
-  uint8_t enablePin,
-  uint8_t newAddress
-) {
-  /*
-   * Release XSHUT/GPIO.
-   * Do not actively drive it HIGH.
-   */
-  pinMode(enablePin, INPUT);
-  delay(50);
+        displayUpdate()
+    }
 
-  lidar.init();
-  lidar.configureDefault();
-  lidar.setAddress(newAddress);
-  lidar.setTimeout(500);
 
-  delay(20);
-  return true;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//   static bool pathCompleted = false;
+
+//   if (!pathCompleted) {
+//     pathCompleted = true;
+
+//     // Replace these coordinates with your required waypoints (mm).
+//     Waypoint path[] = {
+//       {0.0,   0.0},
+//       {180.0, 0.0},
+//       {360.0, 0.0},
+//       {360.0, -180.0}
+//     };
+
+//     int numberOfWaypoints =
+//       sizeof(path) / sizeof(path[0]);
+
+//     purePursuitPath(
+//       path,
+//       numberOfWaypoints,
+//       90.0
+//     );
+
+//     stopRobot();
+//     Serial.println("Waypoint path complete");
+//   }
+// }
+
+
+// // =========================================================
+// // START ONE LIDAR
+// // =========================================================
+
+// bool startLidar(
+//   VL6180X &lidar,
+//   uint8_t enablePin,
+//   uint8_t newAddress
+// ) {
+//   /*
+//    * Release XSHUT/GPIO.
+//    * Do not actively drive it HIGH.
+//    */
+//   pinMode(enablePin, INPUT);
+//   delay(50);
+
+//   lidar.init();
+//   lidar.configureDefault();
+//   lidar.setAddress(newAddress);
+//   lidar.setTimeout(500);
+
+//   delay(20);
+//   return true;
 }
 // =========================================================
 // INITIALISE ALL THREE LIDARS
@@ -991,4 +1018,17 @@ bool centerOnClosestSurface() {
   );
 
   return false;
+}
+
+
+
+Waypoints* calcPath(Maze maze, std::pair<float,float> curr_pos, std::pair<float,float> end_pos) {
+    std::pair<int,int> curr_cell = getCellFromPos(curr_pos);
+    std::pair<int,int> end_cell = getCellFromPos(end_pos);
+    
+}
+
+//returns cell robot is in based on current global pos. 
+std::pair<int, int> getCellFromPos(std::pair<float,float> curr_pos) {
+    return std::make_pair(curr_pos.first() % WALL_LENGTH, curr_pos.second() % WALL_LENGTH)
 }
