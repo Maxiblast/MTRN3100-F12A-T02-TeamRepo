@@ -112,34 +112,31 @@ void setup() {
 }
 
 void loop() {
-  static bool centeringAttempted = false;
+  static bool pathCompleted = false;
 
-  if (!centeringAttempted) {
-    centeringAttempted = true;
+  if (!pathCompleted) {
+    pathCompleted = true;
 
-    bool centred = centerOnClosestSurface();
+    // Replace these coordinates with your required waypoints (mm).
+    Waypoint path[] = {
+      {0.0,   0.0},
+      {180.0, 0.0},
+      {360.0, 0.0},
+      {360.0, -180.0}
+    };
 
-    Serial.println(
-      centred
-        ? "LiDAR centering complete"
-        : "LiDAR centering failed"
+    int numberOfWaypoints =
+      sizeof(path) / sizeof(path[0]);
+
+    purePursuitPath(
+      path,
+      numberOfWaypoints,
+      90.0
     );
+
+    stopRobot();
+    Serial.println("Waypoint path complete");
   }
-
-  // stopRobot();
-  // delay(100);
-
-  // Serial.print("LEFT: ");
-  // Serial.print(readRawLidar(LIDAR_LEFT));
-
-  // Serial.print(" | FRONT: ");
-  // Serial.print(readRawLidar(LIDAR_FRONT));
-
-  // Serial.print(" | RIGHT: ");
-  // Serial.println(readRawLidar(LIDAR_RIGHT));
-
-  // delay(500);
-
 }
 
 
@@ -222,9 +219,6 @@ void initialiseLidars() {
         LEFT_LIDAR_ADDRESS
       )) {
 
-    Serial.println(
-      "ERROR: Left LiDAR failed"
-    );
 
     while (true) {
       stopRobot();
@@ -519,6 +513,12 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
   const float BASE_SPEED = 60.0;
   const float GOAL_TOLERANCE = 5.0;
 
+  // Wall correction settings.
+  // A side reading above 160 mm is treated as no wall.
+  const float WALL_MAX_DISTANCE = 160.0;
+  const float WALL_KP = 0.35;
+  const float MAX_WALL_CORRECTION = 30.0;
+
   int current_segment = 0;  // which segment we're tracking
 
   while (true) {
@@ -580,6 +580,43 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
 
     float left_pwm  = BASE_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
     float right_pwm = BASE_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+
+    // Read both side walls. Correction is applied only when BOTH
+    // distances are valid and no greater than 160 mm.
+    float leftDistance = readFilteredLidar(LIDAR_LEFT);
+    float rightDistance = readFilteredLidar(LIDAR_RIGHT);
+
+    bool leftValid =
+      !isnan(leftDistance) &&
+      leftDistance >= 5.0 &&
+      leftDistance <= WALL_MAX_DISTANCE;
+
+    bool rightValid =
+      !isnan(rightDistance) &&
+      rightDistance >= 5.0 &&
+      rightDistance <= WALL_MAX_DISTANCE;
+
+    if (leftValid && rightValid) {
+      // Positive error means the left wall is closer, so steer right.
+      float wallError = rightDistance - leftDistance;
+      float wallCorrection = WALL_KP * wallError;
+
+      wallCorrection = constrain(
+        wallCorrection,
+        -MAX_WALL_CORRECTION,
+        MAX_WALL_CORRECTION
+      );
+
+      left_pwm += wallCorrection;
+      right_pwm -= wallCorrection;
+
+      Serial.print("WALL: L=");
+      Serial.print(leftDistance);
+      Serial.print(" R=");
+      Serial.print(rightDistance);
+      Serial.print(" correction=");
+      Serial.println(wallCorrection);
+    }
 
     left_pwm  = constrain(left_pwm,  -MAX_PWM, MAX_PWM);
     right_pwm = constrain(right_pwm, -MAX_PWM, MAX_PWM);
