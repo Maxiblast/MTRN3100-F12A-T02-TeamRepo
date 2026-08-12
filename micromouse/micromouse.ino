@@ -60,7 +60,7 @@ void setup() {
 }
 
 void loop() {
-  const char* commands = "R,R,F,F,F,F,R,F,L,F,R,F,L,F,R,R";
+  const char* commands = "F,F,F,F,R,F,F,F,F,L,F,F,L,F,F,F,R,R";
 
   Waypoint waypoints[MAX_WAYPOINTS];
   float final_heading_deg = 0;
@@ -246,7 +246,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
   const float LOOKAHEAD = 50.0;
   // TODO: tune on hardware - target wheel angular velocity (rad/s), not a PWM guess.
   // Bumped from 4.0: that only needed ~20-30/130 PWM to hold, so there was plenty of headroom unused.
-  const float TARGET_WHEEL_SPEED = 20.0;
+  const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
   int current_segment = 0;  // which segment we're tracking
@@ -289,6 +289,20 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float seg_dx = ex - sx;
     float seg_dy = ey - sy;
     float seg_len = sqrt(seg_dx*seg_dx + seg_dy*seg_dy);
+
+    // if heading change is too big for curvature to react to (e.g. <90)
+    const float TURN_THRESHOLD_DEG = 100.0;
+    float seg_heading_deg = atan2(seg_dy, seg_dx) * 180.0 / PI;
+    float current_heading_deg = rh * 180.0 / PI;
+    float heading_gap = seg_heading_deg - current_heading_deg;
+    while (heading_gap > 180.0) heading_gap -= 360.0;
+    while (heading_gap < -180.0) heading_gap += 360.0;
+    if (fabs(heading_gap) > TURN_THRESHOLD_DEG) {
+      turnToHeading(seg_heading_deg);
+      leftVelocityController.reset(encoder1.getRotation());
+      rightVelocityController.reset(encoder2.getRotation());
+      continue;
+    }
 
     // project robot position onto segment
     float t = ((rx - sx) * seg_dx + (ry - sy) * seg_dy) / (seg_len * seg_len);
