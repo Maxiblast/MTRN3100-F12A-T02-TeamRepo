@@ -126,26 +126,7 @@ void setup() {
 
 void loop() {
     //search run to Goal
-    while (isAtTarget(path[currIndex], goalPoint, GOAL_TOLERANCE) == false) {
-        centerOnClosestSurface();
-        //updateOdomUsingLidar
-        //updateMapUsingLidar
-        if (noWallBetween(currCell, nextCell)) {
-            float dx = path[currIndex + 1].x - path[currIndex].x;
-            float dy = path[currIndex + 1].y - path[currIndex].y;
 
-            // std::atan2(y, x) puts 0 along the positive x-axis (Down)
-            float heading_rad = std::atan2(dy, dx);
-            navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, );  
-            currIndex++;
-        } else {
-            int lastIndex = path.size() - 1; //index of last elem in path. 
-            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
-                path.pop_back();     
-            }
-            floodfillAppend(path, currIndex, goalPoint); //appends next steps to get to goal
-        }
-    }
 
     //search run back to start 
     currIndex = 0;
@@ -1199,37 +1180,37 @@ bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, float range) {
     return distance <= range;
 }
 
-// void searchRun(Waypoint begin, Waypoint endPoint) {
-//     // search run back to start 
-//     currIndex = 0;
-//     path.empty();
-//     path.push_back(begin);
-//     floodfillAppend(path, currIndex, endPoint);
+void searchRun(Waypoint begin, Waypoint endPoint) {
+    // search run back to start 
+    currIndex = 0;
+    path.empty();
+    path.push_back(begin);
+    floodfillAppend(path, currIndex, endPoint);
 
-//     while (isAtTarget(path[currIndex], endPoint, GOAL_TOLERANCE) == false) {
-//         centerOnClosestSurface()
-//         //updateOdomUsingLidar
-//         //updateMapUsingLidar
-//         int r = static_cast<int>(path[currIndex].x / CELL_SIZE);
-//         int c = static_cast<int>(path[currIndex].y / CELL_SIZE);
-//         int nr = static_cast<int>(path[currIndex + 1].x / CELL_SIZE);
-//         int nc = static_cast<int>(path[currIndex + 1].y / CELL_SIZE);
+    while (isAtTarget(path[currIndex], endPoint, GOAL_TOLERANCE) == false) {
+        centerOnClosestSurface()
+        //updateOdomUsingLidar
+        //updateMapUsingLidar
+        int r = static_cast<int>(path[currIndex].x / CELL_SIZE);
+        int c = static_cast<int>(path[currIndex].y / CELL_SIZE);
+        int nr = static_cast<int>(path[currIndex + 1].x / CELL_SIZE);
+        int nc = static_cast<int>(path[currIndex + 1].y / CELL_SIZE);
 
-//         //if wall then recalculate else keep moving.
-//         if (isWallPresent(r,c,nr,nc)) {
-//             int lastIndex = path.size() - 1; //index of last elem in path. 
-//             for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
-//                 path.pop_back();     
-//             }
-//             floodfillAppend(path, currIndex, begin); //appends next steps to get to goal
-//         }
-//         //move to next
-//         float dx = path[currIndex + 1].x - path[currIndex].x;
-//         float dy = path[currIndex + 1].y - path[currIndex].y;
+        //if wall then recalculate else keep moving.
+        if (isWallPresent(r,c,nr,nc)) {  //will the lidar detect step at the begining be enough ?????? this check assumes walls have already been detected.
+            int lastIndex = path.size() - 1; //index of last elem in path. 
+            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+                path.pop_back();     
+            }
+            floodfillAppend(path, currIndex, begin); //appends next steps to get to goal
+        }
+        //move to next
+        float dx = path[currIndex + 1].x - path[currIndex].x;
+        float dy = path[currIndex + 1].y - path[currIndex].y;
 
-//         float raw_heading_rad = std::atan2(dy, dx);
-//         float heading_rad = std::round(raw_heading_rad / HALF_PI) * HALF_PI;
-//         navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, heading_rad);  
-//         currIndex++;
-//     }
+        float raw_heading_rad = std::atan2(dy, dx);
+        float heading_rad = std::round(raw_heading_rad / HALF_PI) * HALF_PI;
+        navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, heading_rad);  
+        currIndex++;
+    }
 }
