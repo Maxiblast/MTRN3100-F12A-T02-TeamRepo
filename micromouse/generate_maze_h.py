@@ -86,8 +86,6 @@ def generate_header(vertical: list[int], horizontal: list[int], source: str) -> 
 
 #pragma once
 
-#include "maze.hpp"
-
 {format_array("MAZE_VERTICAL_WALLS", vertical, "MAZE_SIZE")}
 
 {format_array("MAZE_HORIZONTAL_WALLS", horizontal, "MAZE_SIZE")}
