@@ -10,7 +10,10 @@
 #include <VL6180X.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <SSD1306.h>
 
+//Display
+SSD1306 display;
 
 //Motors 
 #define MOT1PWM 11
@@ -132,13 +135,16 @@ void setup() {
 
   //updatePosUsingLidar   << placeholder for trysthan's centering code. 
 
+    Maze maze();
+    maze.mazeLoad();
+    printToOLED(maze, std::make_pair(0,0));
 }
 
 void loop() {
-  static bool missionDone = false;
-  if (!missionDone) {
-    missionDone = runAutonomousMapping();
-  }
+//   static bool missionDone = false;
+//   if (!missionDone) {
+//     missionDone = runAutonomousMapping();
+//   }
 }
 
 direction turnLeft(direction dir) {
@@ -1160,6 +1166,49 @@ bool centerOnClosestSurface() {
   return false;
 }
 
+//Gen Ai//
+void printToOLED(Maze maze, std::pair<int, int> robot_pos) {
+    display.clear();
+    display.setScale(1);
 
+    int charWidth = 6;   // Default width of a font character in pixels (scale 1)
+    int charHeight = 8;  // Default height of a font character in pixels (scale 1)
 
+    // Iterate through all rows (0 to MAZE_SIZE)
+    for (int r = 0; r <= MAZE_SIZE; ++r) {
 
+        // 1. Render Top Horizontal Walls for row 'r'
+        display.setCaret(0, r * 2 * charHeight);
+        for (int c = 0; c < MAZE_SIZE; ++c) {
+            // Check if the bit at column 'c' is set in MAZE_HORIZONTAL_WALLS[c] for level 'r'
+            bool wallPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
+            
+            display.print('+');
+            display.print(wallPresent ? '_' : ' ');
+        }
+        display.print('+'); // End boundary corner
+
+        // Render cell contents and vertical walls (only up to MAZE_SIZE)
+        if (r < MAZE_SIZE) {
+            display.setCaret(0, (r * 2 + 1) * charHeight);
+
+            for (int c = 0; c <= MAZE_SIZE; ++c) {
+                // Check vertical wall at bit position 'c' in row 'r'
+                bool wallPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
+                
+                display.print(wallPresent ? '|' : ' ');
+
+                // Render robot position or empty cell space
+                if (c < MAZE_SIZE) {
+                    if (robot_pos.first == r && robot_pos.second == c) {
+                        display.print('.');
+                    } else {
+                        display.print(' ');
+                    }
+                }
+            }
+        }
+    }
+
+    display.update();
+}
