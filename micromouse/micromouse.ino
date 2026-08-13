@@ -4,6 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
+#include <cmath> // for search run
 
 #include "Encoder.hpp"
 #include "EncoderOdometry.hpp"
@@ -69,14 +70,17 @@ LidarID activeLidar = LIDAR_NONE;
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
+const float HALF_PI = 1.57079632679f; // or M_PI / 2.0f
 
 //Floodfill Variables and associated 
 const int MAZE_SIZE = 9; // assumes maze is square
-const float CELL_SIZE = 180.0f
-const int MAX_PATH_SIZE = 120; //if path gets bigger than this you are cooked. 
+const float CELL_SIZE = 180.0f;
+const int MAX_PATH_SIZE = 110; //if path gets bigger than this you are cooked. 
 Waypoint storage[MAX_PATH_SIZE];
 Vector<Waypoint> path(storage);
 int currIndex = 0; //index of current cell
+const Waypoint startPoint = {0 * CELL_SIZE, 0 * CELL_SIZE};
+const Waypoint goalPoint = {7 * CELL_SIZE, 7 * CELL_SIZE};
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -99,51 +103,76 @@ bool centerOnClosestSurface();
 const char* lidarName(LidarID lidar);
 
 void setup() {
-  // delay(1000);
+  delay(1000);
 
-  // Serial.begin(9600);
-  // Wire.begin();
-  // // Initialise all three LiDAR sensors
-  // initialiseLidars();
+  Serial.begin(9600);
+  Wire.begin();
+  // Initialise all three LiDAR sensors
+  initialiseLidars();
 
-  // // Initialise IMU
-  // mpu.begin();
+  // Initialise IMU
+  mpu.begin();
 
-  // Serial.println("Calibrating IMU, keep still...");
-  // delay(1000);
+  Serial.println("Calibrating IMU, keep still...");
+  delay(1000);
 
-  // mpu.calcOffsets();
+  mpu.calcOffsets();
 
-  // Serial.println("IMU calibration done");
-  // delay(2000);
-  Waypoint point = {0.0,0.0};
-  path.push_back(const Waypoint &value)
-  floodfillAppend(path, currIndex, goalCell); //appends next steps to get to goal
+  Serial.println("IMU calibration done");
+  delay(2000);
+  path.push_back(startPoint);
+  floodfillAppend(path, currIndex, goalPoint); //appends next steps to get to goal
 }
 
 void loop() {
-    // //search run
-    // while (notAtGoal) {
-    //     //centerOnClosestSurface
-    //     //updateOdomUsingLidar
-    //     //updateMapUsingLidar
-    //     if (noWallBetween(currCell, nextCell)) {
-    //         //navigateTo(nextCell)  
-    //         currIndex++;
-    //     } else {
-    //         int lastIndex = path.size() - 1; //index of last elem in path. 
-    //         for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
-    //             path.pop_back();     
-    //         }
-    //         floodfillAppend(path, currIndex, goalCell); //appends next steps to get to goal
-    //     }
-    // }
-    // //solve run
-    // final_path = 
-    // float final_heading = 180.0;  //I arbitrarily picked north. 
-    // purePursuitPath(final_path, sizeof(final_path), final_heading)
+    //search run to Goal
+    while (isAtTarget(path[currIndex], goalPoint, GOAL_TOLERANCE) == false) {
+        centerOnClosestSurface();
+        //updateOdomUsingLidar
+        //updateMapUsingLidar
+        if (noWallBetween(currCell, nextCell)) {
+            float dx = path[currIndex + 1].x - path[currIndex].x;
+            float dy = path[currIndex + 1].y - path[currIndex].y;
 
+            // std::atan2(y, x) puts 0 along the positive x-axis (Down)
+            float heading_rad = std::atan2(dy, dx);
+            navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, );  
+            currIndex++;
+        } else {
+            int lastIndex = path.size() - 1; //index of last elem in path. 
+            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+                path.pop_back();     
+            }
+            floodfillAppend(path, currIndex, goalPoint); //appends next steps to get to goal
+        }
+    }
 
+    //search run back to start 
+    currIndex = 0;
+    path.empty();
+    path.push_back(goalPoint);
+    floodfillAppend(path, currIndex, startPoint);
+
+    while (isAtTarget(path[currIndex], startPoint, GOAL_TOLERANCE) == false) {
+        centerOnClosestSurface()
+        //updateOdomUsingLidar
+        //updateMapUsingLidar
+        if (noWallBetween(currCell, nextCell)) {
+            navigateTo(nextCell);  
+            currIndex++;
+        } else {
+            int lastIndex = path.size() - 1; //index of last elem in path. 
+            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+                path.pop_back();     
+            }
+            floodfillAppend(path, currIndex, startPoint); //appends next steps to get to goal
+        }
+    }
+
+    //solve run
+    final_path = 
+    float final_heading = 180.0;  //I arbitrarily picked north. 
+    purePursuitPath(final_path, sizeof(final_path), final_heading)
 }
 
 
@@ -1159,4 +1188,48 @@ void printPath(const Vector<Waypoint>& pathList) {
         Serial.print(")");
     }
     Serial.println();
+}
+
+bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, float range) {
+    float dx = target_pos.x - curr_pos.x;
+    float dy = target_pos.y - curr_pos.y;
+    
+    float distance = sqrt(dx * dx + dy * dy);
+    
+    return distance <= range;
+}
+
+// void searchRun(Waypoint begin, Waypoint endPoint) {
+//     // search run back to start 
+//     currIndex = 0;
+//     path.empty();
+//     path.push_back(begin);
+//     floodfillAppend(path, currIndex, endPoint);
+
+//     while (isAtTarget(path[currIndex], endPoint, GOAL_TOLERANCE) == false) {
+//         centerOnClosestSurface()
+//         //updateOdomUsingLidar
+//         //updateMapUsingLidar
+//         int r = static_cast<int>(path[currIndex].x / CELL_SIZE);
+//         int c = static_cast<int>(path[currIndex].y / CELL_SIZE);
+//         int nr = static_cast<int>(path[currIndex + 1].x / CELL_SIZE);
+//         int nc = static_cast<int>(path[currIndex + 1].y / CELL_SIZE);
+
+//         //if wall then recalculate else keep moving.
+//         if (isWallPresent(r,c,nr,nc)) {
+//             int lastIndex = path.size() - 1; //index of last elem in path. 
+//             for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+//                 path.pop_back();     
+//             }
+//             floodfillAppend(path, currIndex, begin); //appends next steps to get to goal
+//         }
+//         //move to next
+//         float dx = path[currIndex + 1].x - path[currIndex].x;
+//         float dy = path[currIndex + 1].y - path[currIndex].y;
+
+//         float raw_heading_rad = std::atan2(dy, dx);
+//         float heading_rad = std::round(raw_heading_rad / HALF_PI) * HALF_PI;
+//         navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, heading_rad);  
+//         currIndex++;
+//     }
 }
