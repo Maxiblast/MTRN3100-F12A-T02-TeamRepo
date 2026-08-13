@@ -99,46 +99,51 @@ bool centerOnClosestSurface();
 const char* lidarName(LidarID lidar);
 
 void setup() {
-  delay(1000);
+  // delay(1000);
 
-  Serial.begin(9600);
-  Wire.begin();
-  // Initialise all three LiDAR sensors
-  initialiseLidars();
+  // Serial.begin(9600);
+  // Wire.begin();
+  // // Initialise all three LiDAR sensors
+  // initialiseLidars();
 
-  // Initialise IMU
-  mpu.begin();
+  // // Initialise IMU
+  // mpu.begin();
 
-  Serial.println("Calibrating IMU, keep still...");
-  delay(1000);
+  // Serial.println("Calibrating IMU, keep still...");
+  // delay(1000);
 
-  mpu.calcOffsets();
+  // mpu.calcOffsets();
 
-  Serial.println("IMU calibration done");
-  delay(2000);
+  // Serial.println("IMU calibration done");
+  // delay(2000);
+  Waypoint point = {0.0,0.0};
+  path.push_back(const Waypoint &value)
+  floodfillAppend(path, currIndex, goalCell); //appends next steps to get to goal
 }
 
 void loop() {
-    //search run
-    while (notAtGoal) {
-        //centerOnClosestSurface
-        //updateOdomUsingLidar
-        //updateMapUsingLidar
-        if (noWallBetween(currCell, nextCell)) {
-            //navigateTo(nextCell)  
-            currIndex++;
-        } else {
-            int lastIndex = path.size() - 1; //index of last elem in path. 
-            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
-                path.pop_back();     
-            }
-            floodfillAppend(path, currIndex, goalCell); //appends next steps to get to goal
-        }
-    }
-    //solve run
-    final_path = 
-    float final_heading = 180.0;  //I arbitrarily picked north. 
-    purePursuitPath(final_path, sizeof(final_path), final_heading)
+    // //search run
+    // while (notAtGoal) {
+    //     //centerOnClosestSurface
+    //     //updateOdomUsingLidar
+    //     //updateMapUsingLidar
+    //     if (noWallBetween(currCell, nextCell)) {
+    //         //navigateTo(nextCell)  
+    //         currIndex++;
+    //     } else {
+    //         int lastIndex = path.size() - 1; //index of last elem in path. 
+    //         for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+    //             path.pop_back();     
+    //         }
+    //         floodfillAppend(path, currIndex, goalCell); //appends next steps to get to goal
+    //     }
+    // }
+    // //solve run
+    // final_path = 
+    // float final_heading = 180.0;  //I arbitrarily picked north. 
+    // purePursuitPath(final_path, sizeof(final_path), final_heading)
+
+
 }
 
 
@@ -995,48 +1000,42 @@ bool centerOnClosestSurface() {
   return false;
 }
 
-// Helper to convert float coordinate to integer grid index
 inline int coordToGrid(float val) {
     return static_cast<int>(val / CELL_SIZE + 0.5f);
 }
 
-// Helper to check if a wall exists between adjacent cells (r, c) and (nr, nc)
 bool isWallPresent(int r, int c, int nr, int nc) {
     if (nr < 0 || nr >= MAZE_SIZE || nc < 0 || nc >= MAZE_SIZE) {
         return true; // Out of bounds is a wall
     }
 
-    // Moving vertically
-    if (nr == r + 1) { // Moving Down/South
-        return (MAZE_HORIZONTAL_WALLS[r + 1] & (1 << c)) != 0;
+    // Moving along X axis (Vertically Down/Up: Row boundaries)
+    if (nr == r + 1) { // Moving Down (+X)
+        return (MAZE_HORIZONTAL_WALLS[c] & (1 << (r + 1))) != 0;
     }
-    if (nr == r - 1) { // Moving Up/North
-        return (MAZE_HORIZONTAL_WALLS[r] & (1 << c)) != 0;
+    if (nr == r - 1) { // Moving Up (-X)
+        return (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
     }
 
-    // Moving horizontally
-    if (nc == c + 1) { // Moving Right/East
+    // Moving along Y axis (Horizontally Right/Left: Column boundaries)
+    if (nc == c + 1) { // Moving Right (+Y)
         return (MAZE_VERTICAL_WALLS[r] & (1 << (c + 1))) != 0;
     }
-    if (nc == c - 1) { // Moving Left/West
+    if (nc == c - 1) { // Moving Left (-Y)
         return (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
     }
-
     return true;
 }
 
 void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
-    // 1. Get current cell and target cell grid coordinates
-    int startC = coordToGrid(path[currIndex].x);
-    int startR = coordToGrid(path[currIndex].y);
-    int goalC  = coordToGrid(goalCell.x);
-    int goalR  = coordToGrid(goalCell.y);
+    // X maps to Row (down), Y maps to Col (right)
+    int startR = coordToGrid(path[currIndex].x);
+    int startC = coordToGrid(path[currIndex].y);
+    int goalR  = coordToGrid(goalCell.x);
+    int goalC  = coordToGrid(goalCell.y);
 
-    // If already at goal, return early
     if (startR == goalR && startC == goalC) return;
 
-    // 2. RAM-efficient BFS Flood Fill Distance Matrix (81 bytes)
-    // 255 represents unvisited / infinity
     uint8_t dist[MAZE_SIZE][MAZE_SIZE];
     for (int r = 0; r < MAZE_SIZE; ++r) {
         for (int c = 0; c < MAZE_SIZE; ++c) {
@@ -1044,26 +1043,21 @@ void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
         }
     }
 
-    // Simple queue array for BFS (81 bytes)
     struct Cell { uint8_t r, c; };
     Cell queue[MAZE_SIZE * MAZE_SIZE];
     int head = 0;
     int tail = 0;
 
-    // Start floodfill from the goal cell
     dist[goalR][goalC] = 0;
     queue[tail++] = { (uint8_t)goalR, (uint8_t)goalC };
 
-    // Neighbor direction vectors: Up, Down, Left, Right
     const int dr[] = {-1, 1, 0, 0};
     const int dc[] = { 0, 0,-1, 1};
 
-    // Populate distances across the maze
     while (head < tail) {
         Cell curr = queue[head++];
         uint8_t currentDist = dist[curr.r][curr.c];
 
-        // Stop early if we reached our current starting position
         if (curr.r == startR && curr.c == startC) {
             break; 
         }
@@ -1081,7 +1075,6 @@ void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
         }
     }
 
-    // 3. Trace back path from current position to goal by following decreasing distances
     int currR = startR;
     int currC = startC;
 
@@ -1103,15 +1096,14 @@ void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
             }
         }
 
-        // If no progress can be made (unreachable goal or enclosed), stop
         if (bestR == currR && bestC == currC) {
+            Serial.println(F("ERROR: No reachable path found to goal!"));
             break; 
         }
 
-        // Append next step waypoint to path vector
         Waypoint nextWp;
-        nextWp.x = bestC * CELL_SIZE;
-        nextWp.y = bestR * CELL_SIZE;
+        nextWp.x = bestR * CELL_SIZE; // X = Row index * Cell Size
+        nextWp.y = bestC * CELL_SIZE; // Y = Column index * Cell Size
         path.push_back(nextWp);
 
         currR = bestR;
@@ -1123,11 +1115,10 @@ void printMazeToTerminal()
 {
     for (int wallRow = 0; wallRow <= MAZE_SIZE; wallRow++)
     {
-        // Horizontal walls
+        // Horizontal walls (separated across columns horizontally)
         for (int col = 0; col < MAZE_SIZE; col++)
         {
-            bool wall =
-                (MAZE_HORIZONTAL_WALLS[col] >> wallRow) & 1;
+            bool wall = (MAZE_HORIZONTAL_WALLS[col] >> wallRow) & 1;
 
             Serial.print("+");
             Serial.print(wall ? "---" : "   ");
@@ -1135,20 +1126,15 @@ void printMazeToTerminal()
 
         Serial.println("+");
 
-        // No vertical row after the bottom boundary
         if (wallRow == MAZE_SIZE)
             break;
 
-        // Vertical walls
+        // Vertical walls (separated across rows vertically)
         int row = wallRow;
 
         for (int boundary = 0; boundary <= MAZE_SIZE; boundary++)
         {
-            // Reverse the bit mapping
-            int bit = boundary;
-
-            bool wall =
-                (MAZE_VERTICAL_WALLS[row] >> bit) & 1;
+            bool wall = (MAZE_VERTICAL_WALLS[row] >> boundary) & 1;
 
             Serial.print(wall ? "|" : " ");
 
@@ -1158,4 +1144,19 @@ void printMazeToTerminal()
 
         Serial.println();
     }
+}
+
+void printPath(const Vector<Waypoint>& pathList) {
+    Serial.print(F("Total Elements: "));
+    Serial.println(pathList.size());
+    Serial.println(F("Generated Waypoint Path:"));
+
+    for (size_t i = 0; i < pathList.size(); ++i) {
+        Serial.print("(");
+        Serial.print(pathList[i].x);
+        Serial.print(",");
+        Serial.print(pathList[i].y);
+        Serial.print(")");
+    }
+    Serial.println();
 }
