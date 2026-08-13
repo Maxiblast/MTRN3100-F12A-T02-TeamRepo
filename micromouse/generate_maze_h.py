@@ -78,7 +78,7 @@ def read_maze_txt(path: Path) -> list[str]:
 
 def format_array(name: str, values: list[int], size_name: str) -> str:
     rows = ",\n".join(f"    0b{value:010b}" for value in values)
-    return f"static const int {name}[{size_name}] = {{\n{rows}\n}};"
+    return f"inline int {name}[{size_name}] = {{\n{rows}\n}};"
 
 
 def generate_header(vertical: list[int], horizontal: list[int], source: str) -> str:
