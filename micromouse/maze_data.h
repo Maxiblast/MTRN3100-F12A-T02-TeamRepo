@@ -4,6 +4,8 @@
 
 #include "maze.hpp"
 
+//This stuff is currently flipped about the vertical axis. which is as intented. 
+
 inline int MAZE_VERTICAL_WALLS[MAZE_SIZE] = {
     0b1111111111,
     0b1111111111,
@@ -17,13 +19,13 @@ inline int MAZE_VERTICAL_WALLS[MAZE_SIZE] = {
 };
 
 inline int MAZE_HORIZONTAL_WALLS[MAZE_SIZE] = {
-    0b1010010101,
-    0b1011010111,
-    0b1011000111,
-    0b1010011101,
-    0b1010011101,
-    0b1011010111,
-    0b1011010111,
-    0b1010000101,
-    0b1010010101
+    0b1111111110,
+    0b1111111111,
+    0b1111111111,
+    0b1111111111,
+    0b1111111111,
+    0b1111111111,
+    0b1111111111,
+    0b1111111111,
+    0b1111111111
 };

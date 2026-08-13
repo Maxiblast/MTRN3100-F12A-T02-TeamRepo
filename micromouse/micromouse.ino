@@ -1,12 +1,15 @@
-#include "Encoder.hpp"
-#include "EncoderOdometry.hpp"
-#include "Motor.hpp"
-#include "PIDController.hpp"
 #include <Wire.h>
 #include <MPU6050_light.h>
 #include <VL6180X.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
+#include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
+
+#include "Encoder.hpp"
+#include "EncoderOdometry.hpp"
+#include "Motor.hpp"
+#include "PIDController.hpp"
+#include "waypoint.hpp"
 
 
 //Motors 
@@ -67,9 +70,12 @@ LidarID activeLidar = LIDAR_NONE;
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
-struct Waypoint {
-  float x, y;
-};
+//Floodfill Variables and associated 
+const float CELL_SIZE = 180.0f
+const int MAX_PATH_SIZE = 120; //if path gets bigger than this you are cooked. 
+Waypoint storage[MAX_PATH_SIZE];
+Vector<Waypoint> path(storage);
+int currIndex = 0; //index of current cell
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -112,31 +118,26 @@ void setup() {
 }
 
 void loop() {
-  static bool pathCompleted = false;
-
-  if (!pathCompleted) {
-    pathCompleted = true;
-
-    // Replace these coordinates with your required waypoints (mm).
-    Waypoint path[] = {
-      {0.0,   0.0},
-      {180.0, 0.0},
-      {360.0, 0.0},
-      {360.0, -180.0}
-    };
-
-    int numberOfWaypoints =
-      sizeof(path) / sizeof(path[0]);
-
-    purePursuitPath(
-      path,
-      numberOfWaypoints,
-      90.0
-    );
-
-    stopRobot();
-    Serial.println("Waypoint path complete");
-  }
+    //search run
+    while (notAtGoal) {
+        //centerOnClosestSurface
+        //updateOdomUsingLidar
+        //updateMapUsingLidar
+        if (noWallBetween(currCell, nextCell)) {
+            //navigateTo(nextCell)  
+            currIndex++;
+        } else {
+            int lastIndex = path.size() - 1; //index of last elem in path. 
+            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+                path.pop_back();     
+            }
+            floodfillAppend(path, currIndex, goalCell); //appends next steps to get to goal
+        }
+    }
+    //solve run
+    final_path = 
+    float final_heading = 180.0;  //I arbitrarily picked north. 
+    purePursuitPath(final_path, sizeof(final_path), final_heading)
 }
 
 
@@ -991,4 +992,128 @@ bool centerOnClosestSurface() {
   );
 
   return false;
+}
+
+// Helper to convert float coordinate to integer grid index
+inline int coordToGrid(float val) {
+    return static_cast<int>(val / CELL_SIZE + 0.5f);
+}
+
+// Helper to check if a wall exists between adjacent cells (r, c) and (nr, nc)
+bool isWallPresent(int r, int c, int nr, int nc) {
+    if (nr < 0 || nr >= MAZE_SIZE || nc < 0 || nc >= MAZE_SIZE) {
+        return true; // Out of bounds is a wall
+    }
+
+    // Moving vertically
+    if (nr == r + 1) { // Moving Down/South
+        return (MAZE_HORIZONTAL_WALLS[r + 1] & (1 << c)) != 0;
+    }
+    if (nr == r - 1) { // Moving Up/North
+        return (MAZE_HORIZONTAL_WALLS[r] & (1 << c)) != 0;
+    }
+
+    // Moving horizontally
+    if (nc == c + 1) { // Moving Right/East
+        return (MAZE_VERTICAL_WALLS[r] & (1 << (c + 1))) != 0;
+    }
+    if (nc == c - 1) { // Moving Left/West
+        return (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
+    }
+
+    return true;
+}
+
+void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
+    // 1. Get current cell and target cell grid coordinates
+    int startC = coordToGrid(path[currIndex].x);
+    int startR = coordToGrid(path[currIndex].y);
+    int goalC  = coordToGrid(goalCell.x);
+    int goalR  = coordToGrid(goalCell.y);
+
+    // If already at goal, return early
+    if (startR == goalR && startC == goalC) return;
+
+    // 2. RAM-efficient BFS Flood Fill Distance Matrix (81 bytes)
+    // 255 represents unvisited / infinity
+    uint8_t dist[MAZE_SIZE][MAZE_SIZE];
+    for (int r = 0; r < MAZE_SIZE; ++r) {
+        for (int c = 0; c < MAZE_SIZE; ++c) {
+            dist[r][c] = 255;
+        }
+    }
+
+    // Simple queue array for BFS (81 bytes)
+    struct Cell { uint8_t r, c; };
+    Cell queue[MAZE_SIZE * MAZE_SIZE];
+    int head = 0;
+    int tail = 0;
+
+    // Start floodfill from the goal cell
+    dist[goalR][goalC] = 0;
+    queue[tail++] = { (uint8_t)goalR, (uint8_t)goalC };
+
+    // Neighbor direction vectors: Up, Down, Left, Right
+    const int dr[] = {-1, 1, 0, 0};
+    const int dc[] = { 0, 0,-1, 1};
+
+    // Populate distances across the maze
+    while (head < tail) {
+        Cell curr = queue[head++];
+        uint8_t currentDist = dist[curr.r][curr.c];
+
+        // Stop early if we reached our current starting position
+        if (curr.r == startR && curr.c == startC) {
+            break; 
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            int nr = curr.r + dr[i];
+            int nc = curr.c + dc[i];
+
+            if (nr >= 0 && nr < MAZE_SIZE && nc >= 0 && nc < MAZE_SIZE) {
+                if (!isWallPresent(curr.r, curr.c, nr, nc) && dist[nr][nc] == 255) {
+                    dist[nr][nc] = currentDist + 1;
+                    queue[tail++] = { (uint8_t)nr, (uint8_t)nc };
+                }
+            }
+        }
+    }
+
+    // 3. Trace back path from current position to goal by following decreasing distances
+    int currR = startR;
+    int currC = startC;
+
+    while (currR != goalR || currC != goalC) {
+        int bestR = currR;
+        int bestC = currC;
+        uint8_t minDist = dist[currR][currC];
+
+        for (int i = 0; i < 4; ++i) {
+            int nr = currR + dr[i];
+            int nc = currC + dc[i];
+
+            if (nr >= 0 && nr < MAZE_SIZE && nc >= 0 && nc < MAZE_SIZE) {
+                if (!isWallPresent(currR, currC, nr, nc) && dist[nr][nc] < minDist) {
+                    minDist = dist[nr][nc];
+                    bestR = nr;
+                    bestC = nc;
+                }
+            }
+        }
+
+        // If no progress can be made (unreachable goal or enclosed), stop
+        if (bestR == currR && bestC == currC) {
+            break; 
+        }
+
+        // Append next step waypoint to path vector
+        Waypoint nextWp;
+        nextWp.x = bestC * CELL_SIZE;
+        nextWp.y = bestR * CELL_SIZE;
+        path.push_back(nextWp);
+
+        currR = bestR;
+        currC = bestC;
+    }
 }
