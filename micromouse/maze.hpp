@@ -1,6 +1,6 @@
 #pragma once
 
-// #include <utility>
+#include "waypoint.hpp"
 
 const int MAZE_SIZE = 9;
 
@@ -15,10 +15,9 @@ class Maze {
 public:
     Maze();
     
-    void addWall(std::pair<int, int> pos, direction dir);
-    void addWall(std::pair<float, float> pos, direction dir);
-    void removeWall(std::pair<int, int> pos, direction dir);
-    bool isWall(std::pair<int, int> pos, direction dir) const;
+    void addWall(Waypoint pos, direction dir);
+    void removeWall(Waypoint pos, direction dir);
+    bool isWall(Waypoint pos, direction dir) const;
     void printMaze() const;
     void mazeLoad();
 

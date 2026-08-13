@@ -1,13 +1,10 @@
 #include "maze.hpp"
 #include "maze_data.h"
+#include "waypoint.hpp"
 
 #include <Arduino.h>
 
-namespace {
-
-const float CELL_SIZE = 180.0f;
-
-}  // namespace
+extern float WALL_LENGTH;
 
 void Maze::setWallBit(int& row, int bit, bool value) {
     if (value) {
@@ -24,9 +21,9 @@ Maze::Maze() {
     }
 }
 
-void Maze::addWall(std::pair<int, int> pos, direction dir) {
-    const int i = pos.first;
-    const int j = pos.second;
+void Maze::addWall(Waypoint pos, direction dir) {
+    const int i = static_cast<int>(pos.x / WALL_LENGTH);
+    const int j = static_cast<int>(pos.y / WALL_LENGTH);
 
     if (dir == WEST || dir == EAST) {
         const int bit = (dir == WEST) ? i : i + 1;
@@ -37,15 +34,9 @@ void Maze::addWall(std::pair<int, int> pos, direction dir) {
     }
 }
 
-void Maze::addWall(std::pair<float, float> pos, direction dir) {
-    const int i = static_cast<int>(pos.first / CELL_SIZE);
-    const int j = static_cast<int>(pos.second / CELL_SIZE);
-    addWall({i, j}, dir);
-}
-
-void Maze::removeWall(std::pair<int, int> pos, direction dir) {
-    const int i = pos.first;
-    const int j = pos.second;
+void Maze::removeWall(Waypoint pos, direction dir) {
+    const int i = static_cast<int>(pos.x / WALL_LENGTH);
+    const int j = static_cast<int>(pos.y / WALL_LENGTH);
 
     if (dir == WEST || dir == EAST) {
         const int bit = (dir == WEST) ? i : i + 1;
@@ -63,9 +54,9 @@ void Maze::mazeLoad() {
     }
 }
 
-bool Maze::isWall(std::pair<int, int> pos, direction dir) const {
-    const int i = pos.first;
-    const int j = pos.second;
+bool Maze::isWall(Waypoint pos, direction dir) const {
+    const int i = static_cast<int>(pos.x / WALL_LENGTH);
+    const int j = static_cast<int>(pos.y / WALL_LENGTH);
 
     if (dir == WEST || dir == EAST) {
         const int bit = (dir == WEST) ? i : i + 1;
