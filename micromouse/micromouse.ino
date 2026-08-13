@@ -71,6 +71,7 @@ LidarID activeLidar = LIDAR_NONE;
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
 
 //Floodfill Variables and associated 
+const int MAZE_SIZE = 9; // assumes maze is square
 const float CELL_SIZE = 180.0f
 const int MAX_PATH_SIZE = 120; //if path gets bigger than this you are cooked. 
 Waypoint storage[MAX_PATH_SIZE];
@@ -1115,5 +1116,46 @@ void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
 
         currR = bestR;
         currC = bestC;
+    }
+}
+
+void printMazeToTerminal()
+{
+    for (int wallRow = 0; wallRow <= MAZE_SIZE; wallRow++)
+    {
+        // Horizontal walls
+        for (int col = 0; col < MAZE_SIZE; col++)
+        {
+            bool wall =
+                (MAZE_HORIZONTAL_WALLS[col] >> wallRow) & 1;
+
+            Serial.print("+");
+            Serial.print(wall ? "---" : "   ");
+        }
+
+        Serial.println("+");
+
+        // No vertical row after the bottom boundary
+        if (wallRow == MAZE_SIZE)
+            break;
+
+        // Vertical walls
+        int row = wallRow;
+
+        for (int boundary = 0; boundary <= MAZE_SIZE; boundary++)
+        {
+            // Reverse the bit mapping
+            int bit = boundary;
+
+            bool wall =
+                (MAZE_VERTICAL_WALLS[row] >> bit) & 1;
+
+            Serial.print(wall ? "|" : " ");
+
+            if (boundary < MAZE_SIZE)
+                Serial.print("   ");
+        }
+
+        Serial.println();
     }
 }
