@@ -70,8 +70,8 @@ def parse_lines(lines: list[str]) -> tuple[list[int], list[int]]:
 def read_maze_txt(path: Path) -> list[str]:
     lines: list[str] = []
     for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.split("#", 1)[0].rstrip("\n")
-        if line.strip():
+        line = raw_line.split("#", 1)[0].rstrip("\r\n")
+        if line:
             lines.append(line)
     return lines
 
