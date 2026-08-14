@@ -70,7 +70,8 @@ LidarID activeLidar = LIDAR_NONE;
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
-const float HALF_PI = 1.57079632679f; // or M_PI / 2.0f
+const float HALF_PI = M_PI / 2.0f;
+const float QUART_PI = M_PI / 4.0f;
 
 //Floodfill Variables and associated 
 const int MAZE_SIZE = 9; // assumes maze is square
@@ -81,6 +82,12 @@ Vector<Waypoint> path(storage);
 int currIndex = 0; //index of current cell
 const Waypoint startPoint = {0 * CELL_SIZE, 0 * CELL_SIZE};
 const Waypoint goalPoint = {7 * CELL_SIZE, 7 * CELL_SIZE};
+const float WALL_THRESHOLD = CELL_SIZE + 90.0;
+
+const float SOUTH_RAD = 0.0;
+const float EAST_RAD = QUART_PI;
+const float NORTH_RAD = HALF_PI;
+const float WEST_RAD = HALF_PI + QUART_PI;
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -127,7 +134,9 @@ void setup() {
     //search run back to start 
     searchRun(goalPoint, startPoint);
 
-    float final_heading = 180.0;  //I arbitrarily picked north. 
+    reversePath(path);
+
+    float final_heading = 180.0;  //I arbitrarily picked NORTH_RAD. 
     purePursuitPath(path, sizeof(final_path), final_heading);
 }
 
@@ -1169,7 +1178,7 @@ void searchRun(Waypoint begin, Waypoint endPoint) {
     while (isAtTarget(path[currIndex], endPoint, GOAL_TOLERANCE) == false) {
         centerOnClosestSurface()
         //updateOdomUsingLidar
-        //updateMapUsingLidar
+        //updateMazeUsingLidar
         int r = static_cast<int>(path[currIndex].x / CELL_SIZE);
         int c = static_cast<int>(path[currIndex].y / CELL_SIZE);
         int nr = static_cast<int>(path[currIndex + 1].x / CELL_SIZE);
@@ -1193,3 +1202,45 @@ void searchRun(Waypoint begin, Waypoint endPoint) {
         currIndex++;
     }
 }
+
+//takes path and reverses it. Or should I make a function that just drives path in reverse for less mem?
+void reversePath(Vector<Waypoint>& path){
+
+}
+
+void updateOdomUsingLidar() {
+
+}
+
+void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
+    float frontDist = readFilteredLidar(LIDAR_FRONT);
+    if (frontDist < WALL_THRESHOLD) {
+        
+    }
+}
+
+//returns cell that robot is pointing to.
+Waypoint updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
+    while (heading_rad < 0) {
+        heading_rad += 2*M_PI;
+    }
+    while (heading_rad >= 2*M_PI) {
+        heading_rad -= 2*M_PI;
+    }
+    //calc curr row and column of robot_pos;
+    int r = static_cast<int>(robot_pos.x / CELL_SIZE);
+    int c = static_cast<int>(robot_pos.y / CELL_SIZE);
+
+    if ( SOUTH_RAD - QUART_PI <= heading_rad && heading_rad < SOUTH_RAD + QUART_PI) {
+        MAZE_HORIZONTAL_WALLS[c + 1] number |= (1 << r);
+    } else if (EAST_RAD - QUART_PI <= heading_rad && heading_rad < EAST_RAD + QUART_PI) {
+        MAZE_VERTICAL_WALLS[r] number |= (1 << (c + 1));
+    } else if (NORTH_RAD - QUART_PI <= heading_rad && heading_rad < NORTH_RAD + QUART_PI) {
+        MAZE_HORIZONTAL_WALLS[c] number |= (1 << r);
+    } else if (WEST_RAD - QUART_PI <= heading_rad && heading_rad < WEST_RAD + QUART_PI) { 
+        MAZE_VERTICAL_WALLS[r] number |= (1 << (c));
+    } else {
+        Serial.println("cellFromHeading - no region");
+    }
+}
+
