@@ -70,11 +70,10 @@ LidarID activeLidar = LIDAR_NONE;
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
-const float HALF_PI = M_PI / 2.0f;
-const float QUART_PI = M_PI / 4.0f;
 
 //Floodfill Variables and associated 
 const int MAZE_SIZE = 9; // assumes maze is square
+#include "maze_data.h"
 const float CELL_SIZE = 180.0f;
 const int MAX_PATH_SIZE = 110; //if path gets bigger than this you are cooked. 
 Waypoint storage[MAX_PATH_SIZE];
@@ -84,10 +83,11 @@ const Waypoint startPoint = {0 * CELL_SIZE, 0 * CELL_SIZE};
 const Waypoint goalPoint = {7 * CELL_SIZE, 7 * CELL_SIZE};
 const float WALL_THRESHOLD = CELL_SIZE + 90.0;
 
+const float QUART_PI = PI / 4.0f;
 const float SOUTH_RAD = 0.0;
-const float EAST_RAD = QUART_PI;
-const float NORTH_RAD = HALF_PI;
-const float WEST_RAD = HALF_PI + QUART_PI;
+const float EAST_RAD = HALF_PI;
+const float NORTH_RAD = PI;
+const float WEST_RAD = PI + HALF_PI;
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -1219,7 +1219,7 @@ void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
     }
 }
 
-//returns cell that robot is pointing to.
+//returns cell that robot is poting to.
 Waypoint updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
     while (heading_rad < 0) {
         heading_rad += 2*M_PI;
@@ -1232,13 +1232,13 @@ Waypoint updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
     int c = static_cast<int>(robot_pos.y / CELL_SIZE);
 
     if ( SOUTH_RAD - QUART_PI <= heading_rad && heading_rad < SOUTH_RAD + QUART_PI) {
-        MAZE_HORIZONTAL_WALLS[c + 1] number |= (1 << r);
+        MAZE_HORIZONTAL_WALLS[c] |= (1 << r + 1);
     } else if (EAST_RAD - QUART_PI <= heading_rad && heading_rad < EAST_RAD + QUART_PI) {
-        MAZE_VERTICAL_WALLS[r] number |= (1 << (c + 1));
+        MAZE_VERTICAL_WALLS[r] |= (1 << (c + 1));
     } else if (NORTH_RAD - QUART_PI <= heading_rad && heading_rad < NORTH_RAD + QUART_PI) {
-        MAZE_HORIZONTAL_WALLS[c] number |= (1 << r);
+        MAZE_HORIZONTAL_WALLS[c] |= (1 << r);
     } else if (WEST_RAD - QUART_PI <= heading_rad && heading_rad < WEST_RAD + QUART_PI) { 
-        MAZE_VERTICAL_WALLS[r] number |= (1 << (c));
+        MAZE_VERTICAL_WALLS[r] |= (1 << (c));
     } else {
         Serial.println("cellFromHeading - no region");
     }
