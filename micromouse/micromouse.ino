@@ -4,7 +4,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
-#include <cmath> // for search run
+#include <math.h>
 
 #include "Encoder.hpp"
 #include "EncoderOdometry.hpp"
@@ -75,6 +75,7 @@ LidarID activeLidar = LIDAR_NONE;
 const int MAZE_SIZE = 9; // assumes maze is square
 #include "maze_data.h"
 const float CELL_SIZE = 180.0f;
+const float GOAL_TOLERANCE = 20.0f;
 const int MAX_PATH_SIZE = 110; //if path gets bigger than this you are cooked. 
 Waypoint storage[MAX_PATH_SIZE];
 Vector<Waypoint> path(storage);
@@ -128,16 +129,20 @@ void setup() {
   Serial.println("IMU calibration done");
   delay(2000);
 
-    //search run to Goal
-    searchRun(startPoint, goalPoint);
+    updateMazeUsingLidar(startPoint, SOUTH_RAD);
+    printMazeToTerminal();
 
-    //search run back to start 
-    searchRun(goalPoint, startPoint);
 
-    reversePath(path);
+    // //search run to Goal
+    // searchRun(startPoint, goalPoint);
 
-    float final_heading = 180.0;  //I arbitrarily picked NORTH_RAD. 
-    purePursuitPath(path, sizeof(final_path), final_heading);
+    // //search run back to start 
+    // searchRun(goalPoint, startPoint);
+
+    // reversePath(path);
+
+    // float final_heading = 180.0;  //I arbitrarily picked NORTH_RAD. 
+    // purePursuitPath(path, sizeof(final_path), final_heading);
 }
 
 void loop() {
@@ -1176,7 +1181,7 @@ void searchRun(Waypoint begin, Waypoint endPoint) {
     floodfillAppend(path, currIndex, endPoint);
 
     while (isAtTarget(path[currIndex], endPoint, GOAL_TOLERANCE) == false) {
-        centerOnClosestSurface()
+        centerOnClosestSurface();
         //updateOdomUsingLidar
         //updateMazeUsingLidar
         int r = static_cast<int>(path[currIndex].x / CELL_SIZE);
@@ -1196,8 +1201,8 @@ void searchRun(Waypoint begin, Waypoint endPoint) {
         float dx = path[currIndex + 1].x - path[currIndex].x;
         float dy = path[currIndex + 1].y - path[currIndex].y;
 
-        float raw_heading_rad = std::atan2(dy, dx);
-        float heading_rad = std::round(raw_heading_rad / HALF_PI) * HALF_PI;
+        float raw_heading_rad = atan2(dy, dx);
+        float heading_rad = round(raw_heading_rad / HALF_PI) * HALF_PI;
         navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, heading_rad);  
         currIndex++;
     }
@@ -1208,14 +1213,14 @@ void reversePath(Vector<Waypoint>& path){
 
 }
 
-void updateOdomUsingLidar() {
+// void updateOdomUsingLidar() {
 
-}
+// }
 
 void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
     float frontDist = readFilteredLidar(LIDAR_FRONT);
     if (frontDist < WALL_THRESHOLD) {
-        
+      updateCellFromHeading(robot_pos, heading_rad);
     }
 }
 

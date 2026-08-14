@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include "maze.hpp"
-
 //This stuff is currently flipped about the vertical axis. which is as intented. 
 
 inline int MAZE_VERTICAL_WALLS[MAZE_SIZE] = {
