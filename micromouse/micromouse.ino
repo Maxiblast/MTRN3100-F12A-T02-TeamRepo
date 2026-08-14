@@ -12,9 +12,9 @@
 #define MOT2PWM 9
 #define MOT2DIR 10
 #define MAX_PWM 130
-mtrn3100::Motor motor1(MOT1PWM,MOT1DIR);
-mtrn3100::Motor motor2(MOT2PWM,MOT2DIR);
-mtrn3100::EncoderOdometry encoder_odometry(16,100);
+mtrn3100::Motor motor1(MOT1PWM, MOT1DIR);
+mtrn3100::Motor motor2(MOT2PWM, MOT2DIR);
+mtrn3100::EncoderOdometry encoder_odometry(16, 100);
 
 //Encoders
 #define MOT1ENCA 2
@@ -25,9 +25,9 @@ mtrn3100::Encoder encoder1(MOT1ENCA, MOT1ENCB, true);
 mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 //Controllers
-mtrn3100::PIDController controller(200,2,10);
-mtrn3100::VelocityController leftVelocityController(15, 0, 0, MAX_PWM);
-mtrn3100::VelocityController rightVelocityController(15, 0, 0, MAX_PWM);
+mtrn3100::PIDController controller(200, 2, 10);
+mtrn3100::VelocityController leftVelocityController(30, 2, 0, MAX_PWM);
+mtrn3100::VelocityController rightVelocityController(30, 2, 0, MAX_PWM);
 
 // IMU
 MPU6050 mpu(Wire);
@@ -60,22 +60,31 @@ void setup() {
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
-    {0.0, 0.0},
-    {180.0, 0.0},
-    {180.0, 180.0},
-    {360.0, 180.0},
-    {360.0, 0.0},
-    {720.0, 0.0},
-    {720.0, 180.0},
-    {900.0, 180.0},
-    {900.0, 0.0},
-    {1080.0, 0.0},
+    { -180.0, 0.0 },
+    { 0.0, 0.0 },
+    { 180.0, 0.0 },
+    { 180.0, 180.0 },
+    { 360.0, 180.0 },
+    { 360.0, 0.0 },
+    { 720.0, 0.0 },
+    { 720.0, 180.0 },
+    { 900.0, 180.0 },
+    { 900.0, 0.0 },
+    { 1080.0, 0.0 },
+    { 1080.0, 180.0 },
+    { 900.0, 180.0 },
+    { 720.0, 180.0 },
+    { 720.0, 0.0 },
+    { 360.0, 0.0 },
+    { 360.0, 180.0 },
+    { 180.0, 180.0 },
+    { 0.0, 180.0 },
   };
 
   int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
   int final_heading_deg = 0.0;
 
-  encoder_odometry.setPosition(path[0].x, path[0].y);  // start where this path says we start
+  encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
   resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
   purePursuitPath(path, numberOfWaypoints, final_heading_deg);
 
@@ -154,16 +163,19 @@ void turnToHeading(float target_deg) {
   float current_deg = encoder_odometry.getH() * 180.0 / PI;
   if (current_deg > 180.0) current_deg -= 360.0;
   if (current_deg < -180.0) current_deg += 360.0;
-  
+
   float delta = target_deg - current_deg;
   while (delta > 180.0) delta -= 360.0;
   while (delta < -180.0) delta += 360.0;
   if (delta > 175.0) delta -= 360.0;
   if (delta < -175.0) delta += 360.0;
 
-  Serial.print("turnToHeading: target="); Serial.print(target_deg);
-  Serial.print(" current="); Serial.print(current_deg);
-  Serial.print(" delta="); Serial.println(delta);
+  Serial.print("turnToHeading: target=");
+  Serial.print(target_deg);
+  Serial.print(" current=");
+  Serial.print(current_deg);
+  Serial.print(" delta=");
+  Serial.println(delta);
 
   if (abs(delta) < 2.0) return;  // already close enough
 
@@ -181,9 +193,12 @@ void turnToHeading(float target_deg) {
 
     int pwm = controller.compute(avg);
 
-    Serial.print("avg="); Serial.print(avg);
-    Serial.print(" error="); Serial.print(controller.error);
-    Serial.print(" pwm="); Serial.println(pwm);
+    Serial.print("avg=");
+    Serial.print(avg);
+    Serial.print(" error=");
+    Serial.print(controller.error);
+    Serial.print(" pwm=");
+    Serial.println(pwm);
 
     if (delta > 0) {
       motor1.setPWM(abs(pwm));
@@ -222,7 +237,7 @@ void navigateTo(float tx, float ty, float th_deg) {
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
   const float LOOKAHEAD = 50.0;
-  const float TARGET_WHEEL_SPEED = 10.0;
+  const float TARGET_WHEEL_SPEED = 20.0;
   const float GOAL_TOLERANCE = 5.0;
 
   int current_segment = 0;  // which segment we're tracking
@@ -239,7 +254,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     // final goal is the last waypoint
     float final_x = waypoints[num_waypoints - 1].x;
     float final_y = waypoints[num_waypoints - 1].y;
-    float dist_to_goal = sqrt((final_x-rx)*(final_x-rx) + (final_y-ry)*(final_y-ry));
+    float dist_to_goal = sqrt((final_x - rx) * (final_x - rx) + (final_y - ry) * (final_y - ry));
     if (dist_to_goal < GOAL_TOLERANCE) {
       motor1.setPWM(0);
       motor2.setPWM(0);
@@ -250,7 +265,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     if (current_segment < num_waypoints - 2) {
       float wx = waypoints[current_segment + 1].x;
       float wy = waypoints[current_segment + 1].y;
-      float dist_to_next = sqrt((wx-rx)*(wx-rx) + (wy-ry)*(wy-ry));
+      float dist_to_next = sqrt((wx - rx) * (wx - rx) + (wy - ry) * (wy - ry));
       if (dist_to_next < LOOKAHEAD) {
         current_segment++;
       }
@@ -264,7 +279,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
 
     float seg_dx = ex - sx;
     float seg_dy = ey - sy;
-    float seg_len = sqrt(seg_dx*seg_dx + seg_dy*seg_dy);
+    float seg_len = sqrt(seg_dx * seg_dx + seg_dy * seg_dy);
 
     // if heading change is too big for curvature to react to (e.g. <90)
     const float TURN_THRESHOLD_DEG = 100.0;
@@ -293,11 +308,11 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     // transform to robot local frame
     float cos_h = cos(rh);
     float sin_h = sin(rh);
-    float local_x =  cos_h * (lx - rx) + sin_h * (ly - ry);
+    float local_x = cos_h * (lx - rx) + sin_h * (ly - ry);
     float local_y = -sin_h * (lx - rx) + cos_h * (ly - ry);
 
     // curvature -> target wheel angular velocities (reference generator's job stops here)
-    float l = sqrt(local_x*local_x + local_y*local_y);
+    float l = sqrt(local_x * local_x + local_y * local_y);
     if (l < 1.0) l = 1.0;  // guard against the lookahead point collapsing onto the robot near a waypoint
     float curvature = 2.0 * local_y / (l * l);
 
@@ -305,7 +320,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     const float MAX_CURVATURE = 2.0 / DISTANCE_BETWEEN_WHEELS;
     curvature = constrain(curvature, -MAX_CURVATURE, MAX_CURVATURE);
 
-    float left_wheel_speed  = TARGET_WHEEL_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+    float left_wheel_speed = TARGET_WHEEL_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
     float right_wheel_speed = TARGET_WHEEL_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
 
     if (fabs(curvature) == 0) {
@@ -313,19 +328,25 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     }
 
     // velocity controller's job: hit that target using measured wheel speed, not an open-loop guess
-    int left_pwm  = leftVelocityController.compute(encoder1.getRotation(), left_wheel_speed);
+    int left_pwm = leftVelocityController.compute(encoder1.getRotation(), left_wheel_speed);
     int right_pwm = rightVelocityController.compute(encoder2.getRotation(), right_wheel_speed);
 
     motor1.setPWM(-left_pwm);
     motor2.setPWM(right_pwm);
 
     serialPrint();
-    Serial.print("L: target="); Serial.print(left_wheel_speed);
-    Serial.print(" measured="); Serial.print(leftVelocityController.getMeasuredVelocity());
-    Serial.print(" pwm="); Serial.print(left_pwm);
-    Serial.print("\t\tR: target="); Serial.print(right_wheel_speed);
-    Serial.print(" measured="); Serial.print(rightVelocityController.getMeasuredVelocity());
-    Serial.print(" pwm="); Serial.println(right_pwm);
+    Serial.print("L: target=");
+    Serial.print(left_wheel_speed);
+    Serial.print(" measured=");
+    Serial.print(leftVelocityController.getMeasuredVelocity());
+    Serial.print(" pwm=");
+    Serial.print(left_pwm);
+    Serial.print("\t\tR: target=");
+    Serial.print(right_wheel_speed);
+    Serial.print(" measured=");
+    Serial.print(rightVelocityController.getMeasuredVelocity());
+    Serial.print(" pwm=");
+    Serial.println(right_pwm);
     delay(10);
   }
 
