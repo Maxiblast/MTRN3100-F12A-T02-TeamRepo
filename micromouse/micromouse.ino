@@ -120,40 +120,19 @@ void setup() {
 
   Serial.println("IMU calibration done");
   delay(2000);
-  path.push_back(startPoint);
-  floodfillAppend(path, currIndex, goalPoint); //appends next steps to get to goal
+
+    //search run to Goal
+    searchRun(startPoint, goalPoint);
+
+    //search run back to start 
+    searchRun(goalPoint, startPoint);
+
+    float final_heading = 180.0;  //I arbitrarily picked north. 
+    purePursuitPath(path, sizeof(final_path), final_heading);
 }
 
 void loop() {
-    //search run to Goal
 
-
-    //search run back to start 
-    currIndex = 0;
-    path.empty();
-    path.push_back(goalPoint);
-    floodfillAppend(path, currIndex, startPoint);
-
-    while (isAtTarget(path[currIndex], startPoint, GOAL_TOLERANCE) == false) {
-        centerOnClosestSurface()
-        //updateOdomUsingLidar
-        //updateMapUsingLidar
-        if (noWallBetween(currCell, nextCell)) {
-            navigateTo(nextCell);  
-            currIndex++;
-        } else {
-            int lastIndex = path.size() - 1; //index of last elem in path. 
-            for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
-                path.pop_back();     
-            }
-            floodfillAppend(path, currIndex, startPoint); //appends next steps to get to goal
-        }
-    }
-
-    //solve run
-    final_path = 
-    float final_heading = 180.0;  //I arbitrarily picked north. 
-    purePursuitPath(final_path, sizeof(final_path), final_heading)
 }
 
 
