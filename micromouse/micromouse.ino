@@ -6,7 +6,6 @@
 #include <Wire.h>
 #include <MPU6050_light.h>
 
-
 //Motors
 #define MOT1PWM 11
 #define MOT1DIR 12
@@ -27,8 +26,6 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 //Controllers
 mtrn3100::PIDController controller(200,2,10);
-// TODO: tune on hardware - start with ki=kd=0, raise kp until measured velocity tracks target
-// without overshoot, then add ki to kill steady-state error.
 mtrn3100::VelocityController leftVelocityController(15, 0, 0, MAX_PWM);
 mtrn3100::VelocityController rightVelocityController(15, 0, 0, MAX_PWM);
 
@@ -40,8 +37,6 @@ MPU6050 mpu(Wire);
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
-#define CELL_SIZE 180.0
-#define MAX_WAYPOINTS 32
 
 struct Waypoint {
   float x, y;
@@ -59,49 +54,32 @@ void setup() {
   delay(2000);
 }
 
+// set to the actual provided starting orientation before each maze
+#define START_HEADING_DEG 0.0
+
 void loop() {
-  const char* commands = "F,F,F,F,R,F,F,F,F,L,F,F,L,F,F,F,R,R";
+  // Waypoints are already given in the maze's global frame, use as-is
+  Waypoint path[] = {
+    {0.0, 0.0},
+    {180.0, 0.0},
+    {180.0, 180.0},
+    {360.0, 180.0},
+    {360.0, 0.0},
+    {720.0, 0.0},
+    {720.0, 180.0},
+    {900.0, 180.0},
+    {900.0, 0.0},
+    {1080.0, 0.0},
+  };
 
-  Waypoint waypoints[MAX_WAYPOINTS];
-  float final_heading_deg = 0;
-  int numWaypoints = generateWaypointsFromCommands(commands, waypoints, MAX_WAYPOINTS, &final_heading_deg);
+  int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
+  int final_heading_deg = 0.0;
 
-  purePursuitPath(waypoints, numWaypoints, final_heading_deg);
+  encoder_odometry.setPosition(path[0].x, path[0].y);  // start where this path says we start
+  resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
+  purePursuitPath(path, numberOfWaypoints, final_heading_deg);
+
   while (true) {};
-}
-
-int generateWaypointsFromCommands(const char* commands, Waypoint* waypoints, int maxWaypoints, float* finalHeadingDeg) {
-  float x = 0, y = 0;
-  float heading_deg = 0;
-  int count = 0;
-  waypoints[count++] = {x, y};
-
-  for (int i = 0; commands[i] != '\0'; i++) {
-    switch (commands[i]) {
-      case 'F': {
-        float heading_rad = heading_deg * PI / 180.0;
-        x += CELL_SIZE * cos(heading_rad);
-        y += CELL_SIZE * sin(heading_rad);
-        if (count < maxWaypoints) {
-          waypoints[count++] = {x, y};
-        } 
-        break;
-      }
-      case 'L':
-        heading_deg += 90;
-        break;
-      case 'R':
-        heading_deg -= 90;
-        break;
-      case ',':
-      case ' ':
-        break;
-      default:
-        break;
-    }
-  }
-  *finalHeadingDeg = heading_deg;
-  return count;
 }
 
 float imuHeadingOffsetRad = 0;
@@ -244,8 +222,6 @@ void navigateTo(float tx, float ty, float th_deg) {
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
   const float LOOKAHEAD = 50.0;
-  // TODO: tune on hardware - target wheel angular velocity (rad/s), not a PWM guess.
-  // Bumped from 4.0: that only needed ~20-30/130 PWM to hold, so there was plenty of headroom unused.
   const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
@@ -356,4 +332,3 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
   // final heading correction
   turnToHeading(final_heading_deg);
 }
-

@@ -7,9 +7,6 @@ class EncoderOdometry {
 public:
   EncoderOdometry(float radius, float wheelBase, float imuAlpha = 0.98) : x(0), y(0), h(0), R(radius), B(wheelBase), lastLPos(0), lastRPos(0), ALPHA(imuAlpha) {}
 
-  // imuHeadingRad: gyro-integrated heading (radians, CCW positive, zeroed at the same pose as x/y/h).
-  // Encoder heading is trusted moment-to-moment (ALPHA close to 1) but the gyro term pulls out the
-  // wheel-slip bias that accumulates over a full maze run's worth of turns.
   void update(float leftValue, float rightValue, float imuHeadingRad) {
     delta_left_radians = -(lastLPos - leftValue); // MAKE SURE THE ENCODERS COUNT UP CORRECTLY IE. THEYARE NOT THE WRONG DIRECTION
     delta_right_radians = -(lastRPos - rightValue); // MAKE SURE THE ENCODERS COUNT UP CORRECTLY IE. THEY ARE NOT THE WRONG DIRECTION
@@ -28,6 +25,11 @@ public:
   }
 
   void setHeading(float headingRad) { h = headingRad; }
+
+  void setPosition(float startX, float startY) {
+    x = startX;
+    y = startY;
+  }
 
   float getX() const { return x; }
   float getY() const { return y; }
