@@ -1,3 +1,4 @@
+#include <Arduino.h>
 #include <Wire.h>
 #include <MPU6050_light.h>
 #include <VL6180X.h>
