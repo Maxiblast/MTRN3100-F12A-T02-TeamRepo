@@ -3,15 +3,13 @@
 #include <MPU6050_light.h>
 #include <VL6180X.h>
 #include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
-#include <SSD1306.h>
+#include <SSD1306Ascii>
 
 #include "Encoder.hpp"
 #include "EncoderOdometry.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
 #include "waypoint.hpp"
-
-SSD1306 display;
 
 //Motors 
 #define MOT1PWM 11
@@ -102,21 +100,31 @@ void driveForward(int distance);
 void turnToHeading(float target_deg);
 void navigateTo(int tx, int ty, float th_deg);
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg);
+const char* lidarName(LidarID lidar);
 void stopRobot();
 void setSpinPWM(int pwm);
 float getHeadingDegrees();
 int findCenterDirection(LidarID selectedLidar);
 LidarID findClosestLidar();
 bool centerOnClosestSurface();
-const char* lidarName(LidarID lidar);
+bool isWallPresent(int r, int c, int nr, int nc);
+void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell);
+// void printMazeToTerminal();
+void printPath(const Vector<Waypoint>& pathList);
+bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, int range);
+void searchRun(const Waypoint& begin, const Waypoint endPoint);
+void reversePath(Vector<Waypoint>& path);
+void updateCellFromHeading(Waypoint robot_pos, float heading_rad);
+void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad);
+// void printToOLED(const Waypoint& robot_pos);
 
 void setup() {
   delay(1000);
-  Serial.begin(115200);
+//   Serial.begin(115200);
   Wire.begin();
-  display.init();
-  display.clear();
-  display.update();
+//   display.init();
+//   display.clear();
+//   display.update();
   // Initialise all three LiDAR sensors
   initialiseLidars();
 
@@ -1227,23 +1235,8 @@ void reversePath(Vector<Waypoint>& path){
 
 // }
 
-void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
-    uint16_t frontDist = readFilteredLidar(LIDAR_FRONT);
-    uint16_t leftDist = readFilteredLidar(LIDAR_LEFT);
-    uint16_t rightDist = readFilteredLidar(LIDAR_RIGHT);
-    if (frontDist < WALL_THRESHOLD) {
-      updateCellFromHeading(robot_pos, heading_rad);
-    }
-    if (leftDist < WALL_THRESHOLD) {
-      updateCellFromHeading(robot_pos, heading_rad + HALF_PI);
-    }
-    if (rightDist < WALL_THRESHOLD) {
-      updateCellFromHeading(robot_pos, heading_rad - HALF_PI);
-    }
-}
-
 //returns cell that robot is poting to.
-Waypoint updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
+void updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
     while (heading_rad < 0) {
         heading_rad += 2*M_PI;
     }
@@ -1265,51 +1258,66 @@ Waypoint updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
     } 
 }
 
-void printToOLED(Waypoint robot_pos) {
-    int robotRow = static_cast<int>(robot_pos.x / WALL_LENGTH);
-    int robotCol = static_cast<int>(robot_pos.y / WALL_LENGTH);
-
-    display.clear();
-    display.setScale(1);
-
-    int charWidth = 6;   // Default width of a font character in pixels (scale 1)
-    int charHeight = 8;  // Default height of a font character in pixels (scale 1)
-
-    // Iterate through all rows (0 to MAZE_SIZE)
-    for (int r = 0; r <= MAZE_SIZE; ++r) {
-
-        // 1. Render Top Horizontal Walls for row 'r'
-        display.setCaret(0, r * 2 * charHeight);
-        for (int c = 0; c < MAZE_SIZE; ++c) {
-            // Check if the bit at column 'c' is set in MAZE_HORIZONTAL_WALLS[c] for level 'r'
-            bool wallPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
-            
-            display.print(' ');
-            display.print(wallPresent ? '_' : ' ');
-        }
-        display.print(' '); // End boundary corner
-
-        // Render cell contents and vertical walls (only up to MAZE_SIZE)
-        if (r < MAZE_SIZE) {
-            display.setCaret(0, (r * 2 + 1) * charHeight);
-
-            for (int c = 0; c <= MAZE_SIZE; ++c) {
-                // Check vertical wall at bit position 'c' in row 'r'
-                bool wallPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
-                
-                display.print(wallPresent ? '|' : ' ');
-
-                // Render robot position or empty cell space
-                if (c < MAZE_SIZE) {
-                    if (robotRow == r && robotCol == c) {
-                        display.print('.');
-                    } else {
-                        display.print(' ');
-                    }
-                }
-            }
-        }
+void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
+    uint16_t frontDist = readFilteredLidar(LIDAR_FRONT);
+    uint16_t leftDist = readFilteredLidar(LIDAR_LEFT);
+    uint16_t rightDist = readFilteredLidar(LIDAR_RIGHT);
+    if (frontDist < WALL_THRESHOLD) {
+      updateCellFromHeading(robot_pos, heading_rad);
     }
-
-    display.update();
+    if (leftDist < WALL_THRESHOLD) {
+      updateCellFromHeading(robot_pos, heading_rad + HALF_PI);
+    }
+    if (rightDist < WALL_THRESHOLD) {
+      updateCellFromHeading(robot_pos, heading_rad - HALF_PI);
+    }
 }
+
+// void printToOLED(const Waypoint& robot_pos) {
+//     int robotRow = static_cast<int>(robot_pos.x / WALL_LENGTH);
+//     int robotCol = static_cast<int>(robot_pos.y / WALL_LENGTH);
+
+//     display.clear();
+//     display.setScale(1);
+
+//     int charWidth = 6;   // Default width of a font character in pixels (scale 1)
+//     int charHeight = 8;  // Default height of a font character in pixels (scale 1)
+
+//     // Iterate through all rows (0 to MAZE_SIZE)
+//     for (int r = 0; r <= MAZE_SIZE; ++r) {
+
+//         // 1. Render Top Horizontal Walls for row 'r'
+//         display.setCaret(0, r * 2 * charHeight);
+//         for (int c = 0; c < MAZE_SIZE; ++c) {
+//             // Check if the bit at column 'c' is set in MAZE_HORIZONTAL_WALLS[c] for level 'r'
+//             bool wallPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
+            
+//             display.print(' ');
+//             display.print(wallPresent ? '_' : ' ');
+//         }
+//         display.print(' '); // End boundary corner
+
+//         // Render cell contents and vertical walls (only up to MAZE_SIZE)
+//         if (r < MAZE_SIZE) {
+//             display.setCaret(0, (r * 2 + 1) * charHeight);
+
+//             for (int c = 0; c <= MAZE_SIZE; ++c) {
+//                 // Check vertical wall at bit position 'c' in row 'r'
+//                 bool wallPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
+                
+//                 display.print(wallPresent ? '|' : ' ');
+
+//                 // Render robot position or empty cell space
+//                 if (c < MAZE_SIZE) {
+//                     if (robotRow == r && robotCol == c) {
+//                         display.print('.');
+//                     } else {
+//                         display.print(' ');
+//                     }
+//                 }
+//             }
+//         }
+//     }
+
+//     display.update();
+// }
