@@ -1336,4 +1336,10 @@ void printToOLED(Waypoint& robotPos) {
         bool wallPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
         oled.print(wallPresent ? "_" : " ");
     }
+
+    for (int c = 0; c < MAZE_SIZE; c++) {
+        bool vertPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
+        bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
+        oled.print(horiPresent ? "_" : " ");
+    }
 }
