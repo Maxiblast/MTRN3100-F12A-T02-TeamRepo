@@ -82,7 +82,7 @@ void loop() {
   };
 
   int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-  int final_heading_deg = 0.0;
+  int final_heading_deg = 90.0;
 
   encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
   resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
