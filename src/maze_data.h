@@ -2,8 +2,6 @@
 
 #pragma once
 
-//This stuff is currently flipped about the vertical axis. which is as intented. 
-
 inline int MAZE_VERTICAL_WALLS[MAZE_SIZE] = {
     0b1111111111,
     0b1111111111,

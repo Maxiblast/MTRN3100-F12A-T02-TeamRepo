@@ -90,8 +90,8 @@ const float WEST_RAD = PI + HALF_PI;
 
 //Floodfill user-variables
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
-const Waypoint startPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
-const Waypoint goalPoint = {6 * WALL_LENGTH, 1 * WALL_LENGTH};
+const Waypoint startPoint = {0 * WALL_LENGTH, 0 * WALL_LENGTH};
+const Waypoint goalPoint = {4 * WALL_LENGTH, 1 * WALL_LENGTH};
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -151,7 +151,7 @@ void setup() {
   printToOLED(startPoint);
 
     // //search run to Goal
-    // searchRun(startPoint, goalPoint);
+    searchRun(startPoint, goalPoint);
 
     // //search run back to start 
     // searchRun(goalPoint, startPoint);
@@ -1195,12 +1195,12 @@ void searchRun(const Waypoint& begin, const Waypoint endPoint) {
   path.push_back(begin);
   floodfillAppend(path, currIndex, endPoint);
   // Serial.println(F("test2"));
-  bool check = isAtTarget(path[currIndex], endPoint, FF_GOAL_TOLERANCE);
-  while (check == false) {
+  while (isAtTarget(path[currIndex], endPoint, FF_GOAL_TOLERANCE) == false) {
     // Serial.println(F("test3"));
     // centerOnClosestSurface();
     //updateOdomUsingLidar
     updateMazeUsingLidar(path[currIndex], encoder_odometry.getH());
+    printToOLED(path[currIndex]);
     int8_t r = static_cast<int>(path[currIndex].x / WALL_LENGTH);
     int8_t c = static_cast<int>(path[currIndex].y / WALL_LENGTH);
     int8_t nr = static_cast<int>(path[currIndex + 1].x / WALL_LENGTH);
