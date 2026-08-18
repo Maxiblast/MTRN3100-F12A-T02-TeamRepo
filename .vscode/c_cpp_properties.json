@@ -1,0 +1,64 @@
+//
+// !!! WARNING !!! AUTO-GENERATED FILE!
+// PLEASE DO NOT MODIFY IT AND USE "platformio.ini":
+// https://docs.platformio.org/page/projectconf/section_env_build.html#build-flags
+//
+{
+    "configurations": [
+        {
+            "name": "PlatformIO",
+            "includePath": [
+                "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/include",
+                "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/src",
+                "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/SSD1306Ascii/src",
+                "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/MPU6050_light/src",
+                "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/Vector/src",
+                "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/VL6180X",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/Wire/src",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/cores/arduino",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/variants/eightanaloginputs",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/HID/src",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
+                "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
+                ""
+            ],
+            "browse": {
+                "limitSymbolsToIncludedHeaders": true,
+                "path": [
+                    "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/include",
+                    "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/src",
+                    "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/SSD1306Ascii/src",
+                    "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/MPU6050_light/src",
+                    "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/Vector/src",
+                    "C:/Users/maxwe/OneDrive - UNSW/Documents/PlatformIO/Projects/MTRN3100-F12A-T02-TeamRepo/.pio/libdeps/nanoatmega328new/VL6180X",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/Wire/src",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/cores/arduino",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/variants/eightanaloginputs",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/EEPROM/src",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/HID/src",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/SPI/src",
+                    "C:/Users/maxwe/.platformio/packages/framework-arduino-avr/libraries/SoftwareSerial/src",
+                    ""
+                ]
+            },
+            "defines": [
+                "PLATFORMIO=60119",
+                "ARDUINO_AVR_NANO",
+                "F_CPU=16000000L",
+                "ARDUINO_ARCH_AVR",
+                "ARDUINO=10808",
+                "__AVR_ATmega328P__",
+                ""
+            ],
+            "cStandard": "gnu11",
+            "cppStandard": "gnu++11",
+            "compilerPath": "C:/Users/maxwe/.platformio/packages/toolchain-atmelavr/bin/avr-gcc.exe",
+            "compilerArgs": [
+                "-mmcu=atmega328p",
+                ""
+            ]
+        }
+    ],
+    "version": 4
+}
