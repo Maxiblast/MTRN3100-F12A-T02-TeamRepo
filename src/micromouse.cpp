@@ -3,7 +3,7 @@
 #include <MPU6050_light.h>
 #include <VL6180X.h>
 #include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
-#include <SSD1306Ascii>
+#include <SSD1306Ascii.h>
 
 #include "Encoder.hpp"
 #include "EncoderOdometry.hpp"
@@ -67,7 +67,7 @@ LidarID activeLidar = LIDAR_NONE;
 #define DISTANCE_BETWEEN_WHEELS 100.0
 #define WHEEL_RADIUS 16
 
-//Floodfill constants
+//Floodfill stuff
 const int8_t MAX_PATH_SIZE = 30; //if path gets bigger than this you are cooked. 
 const int8_t MAZE_SIZE = 9; // assumes maze is square
 #include "maze_data.h"
@@ -83,7 +83,7 @@ const float EAST_RAD = HALF_PI;
 const float NORTH_RAD = PI;
 const float WEST_RAD = PI + HALF_PI;
 
-//Floodfill variables
+//Floodfill user-variables
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
 const Waypoint startPoint = {3 * WALL_LENGTH, 1 * WALL_LENGTH};
 const Waypoint goalPoint = {6 * WALL_LENGTH, 1 * WALL_LENGTH};
@@ -140,7 +140,7 @@ void setup() {
   // delay(2000);
 
     // //search run to Goal
-    // searchRun(startPoint, goalPoint);
+    searchRun(startPoint, goalPoint);
 
     // //search run back to start 
     // searchRun(goalPoint, startPoint);
@@ -1277,11 +1277,8 @@ void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
 //     int robotRow = static_cast<int>(robot_pos.x / WALL_LENGTH);
 //     int robotCol = static_cast<int>(robot_pos.y / WALL_LENGTH);
 
-//     display.clear();
-//     display.setScale(1);
+//     oled.clear();
 
-//     int charWidth = 6;   // Default width of a font character in pixels (scale 1)
-//     int charHeight = 8;  // Default height of a font character in pixels (scale 1)
 
 //     // Iterate through all rows (0 to MAZE_SIZE)
 //     for (int r = 0; r <= MAZE_SIZE; ++r) {
@@ -1321,3 +1318,22 @@ void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
 
 //     display.update();
 // }
+
+
+
+void printToOLED(Waypoint& robotPos) {
+    // initRow = (robotPos.y >= 6) ? 2 : 0;
+
+    // for (int r = initRow; r < MAZE_SIZE; r++) {
+    //     for (int c = 0; c < MAZE_SIZE; c++) {
+    //         output = MAZE_ ? : ;
+    //         oled.print()
+    //     }
+    // }
+
+    for (int c = 0; c < MAZE_SIZE; c++) {
+        oled.print(" ");
+        bool wallPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
+        oled.print(wallPresent ? "_" : " ");
+    }
+}
