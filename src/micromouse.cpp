@@ -3,7 +3,8 @@
 #include <MPU6050_light.h>
 #include <VL6180X.h>
 #include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
-#include <SSD1306Ascii.h>
+#include "SSD1306Ascii.h"
+#include "SSD1306AsciiWire.h"
 
 #include "Encoder.hpp"
 #include "EncoderOdometry.hpp"
@@ -48,6 +49,10 @@ MPU6050 mpu(Wire);
 #define FRONT_LIDAR_ADDRESS  0x31
 #define RIGHT_LIDAR_ADDRESS  0x32
 
+//Display
+#define DISPLAY_ADDRESS 0x3C
+SSD1306AsciiWire oled;
+
 VL6180X leftLidar;
 VL6180X frontLidar;
 VL6180X rightLidar;
@@ -85,7 +90,7 @@ const float WEST_RAD = PI + HALF_PI;
 
 //Floodfill user-variables
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
-const Waypoint startPoint = {3 * WALL_LENGTH, 1 * WALL_LENGTH};
+const Waypoint startPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
 const Waypoint goalPoint = {6 * WALL_LENGTH, 1 * WALL_LENGTH};
 
 // Function declarations
@@ -116,15 +121,19 @@ void searchRun(const Waypoint& begin, const Waypoint endPoint);
 void reversePath(Vector<Waypoint>& path);
 void updateCellFromHeading(Waypoint robot_pos, float heading_rad);
 void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad);
-// void printToOLED(const Waypoint& robot_pos);
+void printToOLED(const Waypoint& robot_pos);
 
 void setup() {
-  delay(1000);
+    delay(1000);
 //   Serial.begin(115200);
-  Wire.begin();
-//   display.init();
-//   display.clear();
-//   display.update();
+    Wire.begin();
+    Wire.setClock(400000L);
+    
+    oled.begin(&Adafruit128x64, DISPLAY_ADDRESS);
+
+    oled.setFont(newbasic3x5);
+    oled.clear();
+
   // Initialise all three LiDAR sensors
   initialiseLidars();
 
@@ -139,8 +148,10 @@ void setup() {
   Serial.println(F("IMU calibration done"));
   // delay(2000);
 
+  printToOLED(startPoint);
+
     // //search run to Goal
-    searchRun(startPoint, goalPoint);
+    // searchRun(startPoint, goalPoint);
 
     // //search run back to start 
     // searchRun(goalPoint, startPoint);
@@ -1321,25 +1332,26 @@ void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
 
 
 
-void printToOLED(Waypoint& robotPos) {
-    // initRow = (robotPos.y >= 6) ? 2 : 0;
+void printToOLED(const Waypoint& robotPos) {
+    int initRow = (robotPos.y >= 6) ? 1 : 0;
 
-    // for (int r = initRow; r < MAZE_SIZE; r++) {
-    //     for (int c = 0; c < MAZE_SIZE; c++) {
-    //         output = MAZE_ ? : ;
-    //         oled.print()
-    //     }
-    // }
-
-    for (int c = 0; c < MAZE_SIZE; c++) {
-        oled.print(" ");
-        bool wallPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
-        oled.print(wallPresent ? "_" : " ");
+    //print top row
+    if (initRow == 0) {
+        for (int c = 0; c < MAZE_SIZE; c++) {
+            oled.print(" ");
+            bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << 0));
+            oled.print(horiPresent ? "_" : " ");
+        }
+        oled.println();
     }
 
-    for (int c = 0; c < MAZE_SIZE; c++) {
-        bool vertPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
-        bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
-        oled.print(horiPresent ? "_" : " ");
+    for (int r = initRow; r < MAZE_SIZE; r++) {
+        for (int c = 0; c <= MAZE_SIZE; c++) {
+            bool vertPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c));
+            bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r + 1));
+            oled.print(vertPresent ? "|" : " ");
+            oled.print(horiPresent ? "_" : " ");
+        }
+        oled.println();
     }
 }
