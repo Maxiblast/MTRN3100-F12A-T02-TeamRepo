@@ -26,8 +26,8 @@ mtrn3100::Encoder encoder2(MOT2ENCA, MOT2ENCB);
 
 //Controllers
 mtrn3100::PIDController controller(200, 2, 10);
-mtrn3100::VelocityController leftVelocityController(30, 2, 0, MAX_PWM);
-mtrn3100::VelocityController rightVelocityController(30, 2, 0, MAX_PWM);
+mtrn3100::VelocityController leftVelocityController(15, 0, 0, MAX_PWM);
+mtrn3100::VelocityController rightVelocityController(15, 0, 0, MAX_PWM);
 
 // IMU
 MPU6050 mpu(Wire);
@@ -60,25 +60,25 @@ void setup() {
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
-    { -180.0, 0.0 },
-    { 0.0, 0.0 },
-    { 180.0, 0.0 },
-    { 180.0, 180.0 },
-    { 360.0, 180.0 },
-    { 360.0, 0.0 },
-    { 720.0, 0.0 },
-    { 720.0, 180.0 },
-    { 900.0, 180.0 },
-    { 900.0, 0.0 },
-    { 1080.0, 0.0 },
-    { 1080.0, 180.0 },
-    { 900.0, 180.0 },
-    { 720.0, 180.0 },
-    { 720.0, 0.0 },
-    { 360.0, 0.0 },
-    { 360.0, 180.0 },
-    { 180.0, 180.0 },
-    { 0.0, 180.0 },
+    {1350, 990},
+    {1530, 990},
+    {1530, 450},
+    {1350, 450},
+    {1350, 810},
+    {1170, 810},
+    {1170, 630},
+    {990, 630},
+    {990, 990},
+    {1170, 990},
+    {1170, 1170},
+    {630, 1170},
+    {630, 450},
+    {990, 450},
+    {990, 270},
+    {1170, 270},
+    {1170, 90},
+    {450, 90},
+    {450, 270}
   };
 
   int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
@@ -237,7 +237,7 @@ void navigateTo(float tx, float ty, float th_deg) {
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
   const float LOOKAHEAD = 50.0;
-  const float TARGET_WHEEL_SPEED = 20.0;
+  const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
   int current_segment = 0;  // which segment we're tracking
@@ -320,8 +320,13 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     const float MAX_CURVATURE = 2.0 / DISTANCE_BETWEEN_WHEELS;
     curvature = constrain(curvature, -MAX_CURVATURE, MAX_CURVATURE);
 
-    float left_wheel_speed = TARGET_WHEEL_SPEED * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
-    float right_wheel_speed = TARGET_WHEEL_SPEED * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+    // slow down for corners
+    const float CORNER_SLOWDOWN = 0.1;  // fraction of speed shed at max curvature (0=no slowdown, 1=full stop)
+    float curvature_frac = fabs(curvature) / MAX_CURVATURE;
+    float target_speed = TARGET_WHEEL_SPEED * (1.0 - CORNER_SLOWDOWN * curvature_frac);
+
+    float left_wheel_speed  = target_speed * (1.0 - curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
+    float right_wheel_speed = target_speed * (1.0 + curvature * DISTANCE_BETWEEN_WHEELS / 2.0);
 
     if (fabs(curvature) == 0) {
       resyncHeadingToKnown(atan2(seg_dy, seg_dx));
