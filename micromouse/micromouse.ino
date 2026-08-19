@@ -38,10 +38,27 @@ VL6180X lidar[3];
 const uint8_t LIDAR_ENABLE_PINS[3] = {A2, A1, A0};
 const uint8_t LIDAR_ADDRESSES[3] = {0x30, 0x31, 0x32};
 
-// Change only these two numbers if your physical left/right plugs are swapped.
+// Change these numbers if your physical LiDAR plugs are different.
 // This assumes J14 = left, J15 = front, J16 = right.
 const int LEFT_LIDAR = 0;
+const int FRONT_LIDAR = 1;
 const int RIGHT_LIDAR = 2;
+
+// ======================================================
+//              LIDAR ODOM RESET TUNING
+// ======================================================
+// Put the robot exactly in the centre of one 180 mm cell and record the
+// actual readings. Use those readings here; they may not be exactly 50 mm.
+const float RESET_LEFT_CENTRED_MM = 50.0;
+const float RESET_FRONT_CENTRED_MM = 50.0;
+const float RESET_RIGHT_CENTRED_MM = 50.0;
+
+// Anything farther than this is considered an opening, not an adjacent wall.
+const float RESET_WALL_PRESENT_MAX_MM = 105.0;
+
+// Reject a LiDAR correction larger than this.
+const float RESET_MAX_OFFSET_MM = 35.0;
+// ======================================================
 
 //Constants
 #define TARGET_RAD 6.28
@@ -102,6 +119,14 @@ void loop() {
   // Face perpendicular to whichever wall is currently closest.
   centerToNearestWall();
 
+  // Robot is stationary. Correct its position around the known starting-cell
+  // centre while keeping the path in global coordinates.
+  resetOdometryFromLidar(
+    path[0].x,
+    path[0].y,
+    START_HEADING_DEG
+  );
+
   purePursuitPath(path, numberOfWaypoints, final_heading_deg);
 
   while (true) {};
@@ -152,6 +177,129 @@ float filteredLidarReading(int sensor) {
 
   if (validSamples < 3) return 9999.0;
   return total / validSamples;
+}
+
+bool resetOdometryFromLidar(
+  float cellCentreX,
+  float cellCentreY,
+  float knownHeadingDeg
+) {
+  // ASSUMPTION: the caller has already stopped and aligned the robot.
+  float leftDistance = filteredLidarReading(LEFT_LIDAR);
+  float frontDistance = filteredLidarReading(FRONT_LIDAR);
+  float rightDistance = filteredLidarReading(RIGHT_LIDAR);
+
+  bool leftWall = leftDistance < RESET_WALL_PRESENT_MAX_MM;
+  bool frontWall = frontDistance < RESET_WALL_PRESENT_MAX_MM;
+  bool rightWall = rightDistance < RESET_WALL_PRESENT_MAX_MM;
+
+  float heading = knownHeadingDeg * PI / 180.0;
+
+  // Find the current odometry offset relative to the known cell centre.
+  // Keep this value on an axis where no usable wall is visible.
+  float dx = encoder_odometry.getX() - cellCentreX;
+  float dy = encoder_odometry.getY() - cellCentreY;
+
+  float forwardOffset =
+    dx * cos(heading) + dy * sin(heading);
+
+  float leftOffset =
+    -dx * sin(heading) + dy * cos(heading);
+
+  bool forwardWasReset = false;
+  bool sidewaysWasReset = false;
+
+  // Use both side walls when available.
+  if (leftWall && rightWall) {
+    float offsetMeasuredFromLeft =
+      RESET_LEFT_CENTRED_MM - leftDistance;
+
+    float offsetMeasuredFromRight =
+      rightDistance - RESET_RIGHT_CENTRED_MM;
+
+    float measuredLeftOffset =
+      (offsetMeasuredFromLeft + offsetMeasuredFromRight) / 2.0;
+
+    if (fabs(measuredLeftOffset) <= RESET_MAX_OFFSET_MM) {
+      leftOffset = measuredLeftOffset;
+      sidewaysWasReset = true;
+    }
+  }
+  // If one side is open, use the wall that still exists.
+  else if (leftWall) {
+    float measuredLeftOffset =
+      RESET_LEFT_CENTRED_MM - leftDistance;
+
+    if (fabs(measuredLeftOffset) <= RESET_MAX_OFFSET_MM) {
+      leftOffset = measuredLeftOffset;
+      sidewaysWasReset = true;
+    }
+  }
+
+  else if (rightWall) {
+    float measuredLeftOffset =
+      rightDistance - RESET_RIGHT_CENTRED_MM;
+
+    if (fabs(measuredLeftOffset) <= RESET_MAX_OFFSET_MM) {
+      leftOffset = measuredLeftOffset;
+      sidewaysWasReset = true;
+    }
+  }
+
+  // Only reset the forward offset when the front wall of this cell exists.
+  if (frontWall) {
+    float measuredForwardOffset =
+      RESET_FRONT_CENTRED_MM - frontDistance;
+
+    if (fabs(measuredForwardOffset) <= RESET_MAX_OFFSET_MM) {
+      forwardOffset = measuredForwardOffset;
+      forwardWasReset = true;
+    }
+  }
+
+  // Convert robot-local forward/left offsets back into global X/Y.
+  float correctedX =
+    cellCentreX +
+    forwardOffset * cos(heading) -
+    leftOffset * sin(heading);
+
+  float correctedY =
+    cellCentreY +
+    forwardOffset * sin(heading) +
+    leftOffset * cos(heading);
+
+  encoder_odometry.setPosition(correctedX, correctedY);
+  resyncHeadingToKnown(heading);
+
+  Serial.println("----- LIDAR ODOM RESET -----");
+
+  Serial.print("Left distance: ");
+  if (leftWall) Serial.println(leftDistance);
+  else Serial.println("OPEN");
+
+  Serial.print("Front distance: ");
+  if (frontWall) Serial.println(frontDistance);
+  else Serial.println("OPEN");
+
+  Serial.print("Right distance: ");
+  if (rightWall) Serial.println(rightDistance);
+  else Serial.println("OPEN");
+
+  Serial.print("Forward offset: ");
+  Serial.println(forwardOffset);
+
+  Serial.print("Left offset: ");
+  Serial.println(leftOffset);
+
+  Serial.print("Corrected X: ");
+  Serial.println(correctedX);
+
+  Serial.print("Corrected Y: ");
+  Serial.println(correctedY);
+
+  Serial.println("----------------------------");
+
+  return forwardWasReset || sidewaysWasReset;
 }
 
 float wallCenteringCurvature(float pathCurvature, float headingErrorDeg) {
