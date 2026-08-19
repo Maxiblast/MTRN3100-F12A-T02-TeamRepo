@@ -90,8 +90,8 @@ const float WEST_RAD = PI + HALF_PI;
 
 //Floodfill user-variables
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
-const Waypoint startPoint = {7 * WALL_LENGTH, 0 * WALL_LENGTH};
-const Waypoint goalPoint = {4 * WALL_LENGTH, 1 * WALL_LENGTH};
+const Waypoint startPoint = { 0 * WALL_LENGTH, 3 * WALL_LENGTH};
+const Waypoint goalPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
 
 // Function declarations
 bool startLidar(VL6180X &lidar, uint8_t enablePin, uint8_t newAddress);
@@ -147,8 +147,25 @@ void setup() {
 
   Serial.println(F("IMU calibration done"));
   // delay(2000);
+    // float heading_rad = 180.0;
+    // printToOLED(startPoint);
+    // delay(2000);
+    // updateCellFromHeading(startPoint, heading_rad);
+    // printToOLED(startPoint);
+    // delay(2000);
+    // updateCellFromHeading(startPoint, heading_rad + HALF_PI);
+    // printToOLED(startPoint);
+    // delay(2000);
+    // updateCellFromHeading(startPoint, heading_rad - HALF_PI);
+    // printToOLED(startPoint);
 
-  printToOLED(startPoint);
+    floodfillAppend(path, 0, goalPoint);
+    Waypoint finalPath[path.size()];
+    for (int i{0}; i < path.size(); i++) {
+        finalPath[i] = path[i];
+    }
+
+    purePursuitPath(finalPath, path.size(),0.0);
 
     // //search run to Goal
     // searchRun(startPoint, goalPoint);
@@ -536,7 +553,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
   const float LOOKAHEAD = 75.0;
   const float MAX_PWM = 130.0;
   const float BASE_SPEED = 60.0;
-  const float GOAL_TOLERANCE = 5.0;
+  const float GOAL_TOLERANCE = 10.0;
 
   // Wall correction settings.
   // A side reading above 160 mm is treated as no wall.
@@ -1343,13 +1360,14 @@ void printToOLED(const Waypoint& robotPos) {
             bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << 0));
             oled.print(horiPresent ? "_" : " ");
         }
+        oled.print("%");
         oled.println();
     }
 
     // Limit visible rows so total output lines never exceed 8
     int maxRows = (initRow == 0) ? 7 : 8; 
     int endRow = min((int)MAZE_SIZE, initRow + maxRows);  // lowk is the min necessary Gemini? lol...
-
+    bool statsPrinted = false;
     for (int r = initRow; r < endRow; r++) {
         for (int c = 0; c <= MAZE_SIZE; c++) {
             bool vertPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c));
@@ -1357,6 +1375,32 @@ void printToOLED(const Waypoint& robotPos) {
             oled.print(vertPresent ? "|" : " ");
             oled.print(horiPresent ? "_" : " ");
         }
+        if (!statsPrinted) {
+            oled.print("   %");
+            statsPrinted = true;
+        }
         oled.println();
     }
+}
+
+void printStats() {
+    oled.clear();
+    
+    oled.print(F("x: "))
+    oled.print();
+    oled.print(F("y: "))
+    oled.print();
+    oled.print(F("r: "))
+    oled.print();
+    oled.print(F("c: "))
+    oled.print();
+    oled.println();
+    
+    oled.print(F("l: "))
+    oled.print();
+    oled.print(F("f: "))
+    oled.print();
+    oled.print(F("r: "))
+    oled.print();
+    oled.println();
 }
