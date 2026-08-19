@@ -1,12 +1,16 @@
+#include <Arduino.h>
+#include <Wire.h>
+#include <MPU6050_light.h>
+#include <VL6180X.h>
+#include <Vector.h>  //gives static c arrays similar functionality to std::vector. Same for arrays. 
+#include "SSD1306Ascii.h"
+#include "SSD1306AsciiWire.h"
+
 #include "Encoder.hpp"
 #include "EncoderOdometry.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
-#include "VelocityController.hpp"
-#include <Wire.h>
-#include <MPU6050_light.h>
-#include <VL6180X.h>
-
+#include "waypoint.hpp"
 //Motors
 #define MOT1PWM 11
 #define MOT1DIR 12
@@ -38,6 +42,10 @@ VL6180X lidar[3];
 const uint8_t LIDAR_ENABLE_PINS[3] = {A2, A1, A0};
 const uint8_t LIDAR_ADDRESSES[3] = {0x30, 0x31, 0x32};
 
+//Display
+const uint8_t DISPLAY_ADDRESS = 0x3C;
+SSD1306AsciiWire oled;
+
 // Change only these two numbers if your physical left/right plugs are swapped.
 // This assumes J14 = left, J15 = front, J16 = right.
 const int LEFT_LIDAR = 0;
@@ -47,7 +55,28 @@ const int RIGHT_LIDAR = 2;
 #define TARGET_RAD 6.28
 #define WHEEL_DIAMETER 32.0
 #define DISTANCE_BETWEEN_WHEELS 100.0
-#define WHEEL_RADIUS (WHEEL_DIAMETER / 2.0)
+#define WHEEL_RADIUS 16.0
+
+//Floodfill stuff
+const int8_t MAX_PATH_SIZE = 30; //if path gets bigger than this you are cooked. 
+const int8_t MAZE_SIZE = 9; // assumes maze is square
+#include "maze_data.h"
+Waypoint storage[MAX_PATH_SIZE];
+Vector<Waypoint> path(storage);
+int currIndex = 0; //index of current cell in path
+const int WALL_LENGTH = 180; // same as WALL_LENGTH. unit is mm.  
+const int WALL_THRESHOLD = WALL_LENGTH + 90; //unit is mm. if there is an object within this distance then it is a wall. 
+
+const float QUART_PI = PI / 4.0f;
+const float SOUTH_RAD = 0.0;
+const float EAST_RAD = HALF_PI;
+const float NORTH_RAD = PI;
+const float WEST_RAD = PI + HALF_PI;
+
+//Floodfill user-variables
+const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
+const Waypoint startPoint = { 0 * WALL_LENGTH, 3 * WALL_LENGTH};
+const Waypoint goalPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
 
 struct Waypoint {
   float x, y;
@@ -57,9 +86,15 @@ void setup() {
   delay(1000);
   Serial.begin(115200);
   Wire.begin();
+  Wire.setClock(400000L);
+  oled.begin(&Adafruit128x64, DISPLAY_ADDRESS);
+  oled.setScrollMode(SCROLL_MODE_AUTO);
+  oled.setFont(newbasic3x5);
+  oled.clear();
+
   setupLidars();
   mpu.begin();
-  Serial.println("Calibrating IMU, keep still...");
+  Serial.println(F("Calibrating IMU, keep still..."));
   delay(1000);
   mpu.calcOffsets();
   Serial.println("Done");
@@ -594,4 +629,334 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
 
   // final heading correction
   turnToHeading(final_heading_deg);
+}
+
+bool isWallPresent(int r, int c, int nr, int nc) {
+    if (nr < 0 || nr >= MAZE_SIZE || nc < 0 || nc >= MAZE_SIZE) {
+        return true; // Out of bounds is a wall
+    }
+
+    // Moving along X axis (Vertically Down/Up: Row boundaries)
+    if (nr == r + 1) { // Moving Down (+X)
+        return (MAZE_HORIZONTAL_WALLS[c] & (1 << (r + 1))) != 0;
+    }
+    if (nr == r - 1) { // Moving Up (-X)
+        return (MAZE_HORIZONTAL_WALLS[c] & (1 << r)) != 0;
+    }
+
+    // Moving along Y axis (Horizontally Right/Left: Column boundaries)
+    if (nc == c + 1) { // Moving Right (+Y)
+        return (MAZE_VERTICAL_WALLS[r] & (1 << (c + 1))) != 0;
+    }
+    if (nc == c - 1) { // Moving Left (-Y)
+        return (MAZE_VERTICAL_WALLS[r] & (1 << c)) != 0;
+    }
+    return true;
+}
+
+void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
+    // X maps to Row (down), Y maps to Col (right)
+    int startR = coordToGrid(path[currIndex].x);
+    int startC = coordToGrid(path[currIndex].y);
+    int goalR  = coordToGrid(goalCell.x);
+    int goalC  = coordToGrid(goalCell.y);
+
+    if (startR == goalR && startC == goalC) return;
+
+    uint8_t dist[MAZE_SIZE][MAZE_SIZE];
+    for (int r = 0; r < MAZE_SIZE; ++r) {
+        for (int c = 0; c < MAZE_SIZE; ++c) {
+            dist[r][c] = 255;
+        }
+    }
+
+    struct Cell { uint8_t r, c; };
+    Cell queue[MAZE_SIZE * MAZE_SIZE];
+    int head = 0;
+    int tail = 0;
+
+    dist[goalR][goalC] = 0;
+    queue[tail++] = { (uint8_t)goalR, (uint8_t)goalC };
+
+    const int dr[] = {-1, 1, 0, 0};
+    const int dc[] = { 0, 0,-1, 1};
+
+    while (head < tail) {
+        Cell curr = queue[head++];
+        uint8_t currentDist = dist[curr.r][curr.c];
+
+        if (curr.r == startR && curr.c == startC) {
+            break; 
+        }
+
+        for (int i = 0; i < 4; ++i) {
+            int nr = curr.r + dr[i];
+            int nc = curr.c + dc[i];
+
+            if (nr >= 0 && nr < MAZE_SIZE && nc >= 0 && nc < MAZE_SIZE) {
+                if (!isWallPresent(curr.r, curr.c, nr, nc) && dist[nr][nc] == 255) {
+                    dist[nr][nc] = currentDist + 1;
+                    queue[tail++] = { (uint8_t)nr, (uint8_t)nc };
+                }
+            }
+        }
+    }
+
+    int currR = startR;
+    int currC = startC;
+
+    while (currR != goalR || currC != goalC) {
+        int bestR = currR;
+        int bestC = currC;
+        uint8_t minDist = dist[currR][currC];
+
+        for (int i = 0; i < 4; ++i) {
+            int nr = currR + dr[i];
+            int nc = currC + dc[i];
+
+            if (nr >= 0 && nr < MAZE_SIZE && nc >= 0 && nc < MAZE_SIZE) {
+                if (!isWallPresent(currR, currC, nr, nc) && dist[nr][nc] < minDist) {
+                    minDist = dist[nr][nc];
+                    bestR = nr;
+                    bestC = nc;
+                }
+            }
+        }
+
+        if (bestR == currR && bestC == currC) {
+            // Serial.println(F("ERROR: No reachable path found to goal!"));
+            break; 
+        }
+
+        Waypoint nextWp;
+        nextWp.x = bestR * WALL_LENGTH; // X = Row index * Cell Size
+        nextWp.y = bestC * WALL_LENGTH; // Y = Column index * Cell Size
+        path.push_back(nextWp);
+
+        currR = bestR;
+        currC = bestC;
+    }
+}
+
+// void printMazeToTerminal()
+// {
+//     for (int wallRow = 0; wallRow <= MAZE_SIZE; wallRow++)
+//     {
+//         // Horizontal walls (separated across columns horizontally)
+//         for (int col = 0; col < MAZE_SIZE; col++)
+//         {
+//             bool wall = (MAZE_HORIZONTAL_WALLS[col] >> wallRow) & 1;
+
+//             Serial.print("+");
+//             Serial.print(wall ? "---" : "   ");
+//         }
+
+//         Serial.println("+");
+
+//         if (wallRow == MAZE_SIZE)
+//             break;
+
+//         // Vertical walls (separated across rows vertically)
+//         int row = wallRow;
+
+//         for (int boundary = 0; boundary <= MAZE_SIZE; boundary++)
+//         {
+//             bool wall = (MAZE_VERTICAL_WALLS[row] >> boundary) & 1;
+
+//             Serial.print(wall ? "|" : " ");
+
+//             if (boundary < MAZE_SIZE)
+//                 Serial.print("   ");
+//         }
+
+//         Serial.println();
+//     }
+// }
+
+void printPath(const Vector<Waypoint>& pathList) {
+    Serial.print(F("Total Elements: "));
+    Serial.println(pathList.size());
+    Serial.println(F("Generated Waypoint Path:"));
+
+    for (size_t i = 0; i < pathList.size(); ++i) {
+        Serial.print("(");
+        Serial.print(pathList[i].x);
+        Serial.print(",");
+        Serial.print(pathList[i].y);
+        Serial.print(")");
+    }
+    Serial.println();
+}
+
+bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, int range) {
+    int dx = target_pos.x - curr_pos.x;
+    int dy = target_pos.y - curr_pos.y;
+    
+    int distance = sqrt(dx * dx + dy * dy);
+    
+    return distance <= range;
+}
+
+void searchRun(const Waypoint& begin, const Waypoint endPoint) {
+// search run back to start 
+  // Serial.println(F("test1"));
+  currIndex = 0;
+  path.empty();
+  path.push_back(begin);
+  floodfillAppend(path, currIndex, endPoint);
+  // Serial.println(F("test2"));
+  while (isAtTarget(path[currIndex], endPoint, FF_GOAL_TOLERANCE) == false) {
+    // Serial.println(F("test3"));
+    // centerOnClosestSurface();
+    //updateOdomUsingLidar
+    updateMazeUsingLidar(path[currIndex], encoder_odometry.getH());
+    printToOLED(path[currIndex]);
+    int8_t r = static_cast<int>(path[currIndex].x / WALL_LENGTH);
+    int8_t c = static_cast<int>(path[currIndex].y / WALL_LENGTH);
+    int8_t nr = static_cast<int>(path[currIndex + 1].x / WALL_LENGTH);
+    int8_t nc = static_cast<int>(path[currIndex + 1].y / WALL_LENGTH);
+
+    //if wall then recalculate else keep moving.
+    if (isWallPresent(r,c,nr,nc)) {  //will the lidar detect step at the begining be enough ?????? this check assumes walls have already been detected.
+        int lastIndex = path.size() - 1; //index of last elem in path. 
+        for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
+            path.pop_back();     
+        }
+        floodfillAppend(path, currIndex, begin); //appends next steps to get to goal
+    }
+
+    // Discrete direction calculation without atan2() or float math
+    int dx = nr - r;
+    int dy = nc - c;
+    float heading_rad = 0.0f;
+
+    if (dx > 0)       heading_rad = 0.0f;          // East
+    else if (dx < 0)  heading_rad = PI;            // West
+    else if (dy > 0)  heading_rad = HALF_PI;       // North
+    else if (dy < 0)  heading_rad = -HALF_PI;      // South
+    
+    navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, heading_rad);  
+    currIndex++;
+  }
+}
+
+// //takes path and reverses it. Or should I make a function that just drives path in reverse for less mem?
+void reversePath(Vector<Waypoint>& path){
+  int tailIndex = path.size() - 1;
+  int middleIndex = (path.size() + 1) / 2; //the + 1 is to round up the integer division to get the average rounded up.
+  for (int i{0}; i < middleIndex; i++) {
+    Waypoint curr = path[i];
+    path[i] = path[tailIndex];
+    path[tailIndex] = curr;
+    tailIndex--;
+  }
+}
+
+// void updateOdomUsingLidar() {
+
+// }
+
+//returns cell that robot is poting to.
+void updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
+    while (heading_rad < 0) {
+        heading_rad += 2*M_PI;
+    }
+    while (heading_rad >= 2*M_PI) {
+        heading_rad -= 2*M_PI;
+    }
+    //calc curr row and column of robot_pos;
+    int r = static_cast<int>(robot_pos.x / WALL_LENGTH);
+    int c = static_cast<int>(robot_pos.y / WALL_LENGTH);
+
+    if ( SOUTH_RAD - QUART_PI <= heading_rad && heading_rad < SOUTH_RAD + QUART_PI) {
+        MAZE_HORIZONTAL_WALLS[c] |= (1 << (r + 1));
+    } else if (EAST_RAD - QUART_PI <= heading_rad && heading_rad < EAST_RAD + QUART_PI) {
+        MAZE_VERTICAL_WALLS[r] |= (1 << (c + 1));
+    } else if (NORTH_RAD - QUART_PI <= heading_rad && heading_rad < NORTH_RAD + QUART_PI) {
+        MAZE_HORIZONTAL_WALLS[c] |= (1 << r);
+    } else if (WEST_RAD - QUART_PI <= heading_rad && heading_rad < WEST_RAD + QUART_PI) { 
+        MAZE_VERTICAL_WALLS[r] |= (1 << c);
+    } 
+}
+
+void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
+    uint16_t frontDist = readFilteredLidar(LIDAR_FRONT);
+    uint16_t leftDist = readFilteredLidar(LIDAR_LEFT);
+    uint16_t rightDist = readFilteredLidar(LIDAR_RIGHT);
+    if (frontDist < WALL_THRESHOLD) {
+      updateCellFromHeading(robot_pos, heading_rad);
+    }
+    if (leftDist < WALL_THRESHOLD) {
+      updateCellFromHeading(robot_pos, heading_rad + HALF_PI);
+    }
+    if (rightDist < WALL_THRESHOLD) {
+      updateCellFromHeading(robot_pos, heading_rad - HALF_PI);
+    }
+}
+
+
+//Gen Ai used to bugfix
+void printToOLED(const Waypoint& robotPos) {
+    oled.clear();
+    int initRow = (robotPos.x >= 6) ? 2 : 0; // Start at row 2 if robot is further down
+
+    // Print top row
+    if (initRow == 0) {
+        for (int c = 0; c < MAZE_SIZE; c++) {
+            oled.print(" ");
+            bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << 0));
+            oled.print(horiPresent ? "_" : " ");
+        }
+        oled.print("%");
+        oled.println();
+    }
+
+    // Limit visible rows so total output lines never exceed 8
+    int maxRows = (initRow == 0) ? 7 : 8; 
+    int endRow = min((int)MAZE_SIZE, initRow + maxRows);  // lowk is the min necessary Gemini? lol...
+    bool statsPrinted = false;
+    for (int r = initRow; r < endRow; r++) {
+        for (int c = 0; c <= MAZE_SIZE; c++) {
+            bool vertPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c));
+            bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << (r + 1)));
+            oled.print(vertPresent ? "|" : " ");
+            oled.print(horiPresent ? "_" : " ");
+        }
+        if (!statsPrinted) {
+            oled.print("   %");
+            statsPrinted = true;
+        }
+        oled.println();
+    }
+}
+
+void printStats() {
+    // oled.clear();
+    // oled.set2X();
+    int x = encoder_odometry.getX();
+    int y = encoder_odometry.getY();
+    int h = encoder_odometry.getH();
+    int r = static_cast<int>(x / WALL_LENGTH);
+    int c = static_cast<int>(y / WALL_LENGTH);
+
+    oled.print(F("X dist: "));
+    oled.print(x);
+    oled.print(F(" Y dist: "));
+    oled.print(y);
+    oled.print(F(" H: "));
+    oled.println(h);
+
+    // oled.print(F("r: "));
+    // oled.print(r);
+    // oled.print(F("c: "));
+    // oled.println(c);
+    
+    // oled.print(F("l: "));
+    // oled.print();
+    // oled.print(F("f: "));
+    // oled.print();
+    // oled.print(F("r: "));
+    // oled.print();
+    // oled.println();
+    // oled.set1X();
 }
