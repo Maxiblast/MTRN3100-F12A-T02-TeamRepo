@@ -122,15 +122,16 @@ void reversePath(Vector<Waypoint>& path);
 void updateCellFromHeading(Waypoint robot_pos, float heading_rad);
 void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad);
 void printToOLED(const Waypoint& robot_pos);
+void printStats();
 
 void setup() {
     delay(1000);
-//   Serial.begin(115200);
+  Serial.begin(115200);
     Wire.begin();
     Wire.setClock(400000L);
     
     oled.begin(&Adafruit128x64, DISPLAY_ADDRESS);
-
+    oled.setScrollMode(SCROLL_MODE_AUTO);
     oled.setFont(newbasic3x5);
     oled.clear();
 
@@ -159,13 +160,17 @@ void setup() {
     // updateCellFromHeading(startPoint, heading_rad - HALF_PI);
     // printToOLED(startPoint);
 
-    floodfillAppend(path, 0, goalPoint);
-    Waypoint finalPath[path.size()];
-    for (int i{0}; i < path.size(); i++) {
-        finalPath[i] = path[i];
-    }
 
-    purePursuitPath(finalPath, path.size(),0.0);
+
+
+    // printStats();
+    // floodfillAppend(path, 0, goalPoint);
+    // Waypoint finalPath[path.size()];
+    // for (int i{0}; i < path.size(); i++) {
+    //     finalPath[i] = path[i];
+    // }
+
+    // purePursuitPath(finalPath, path.size(),0.0);
 
     // //search run to Goal
     // searchRun(startPoint, goalPoint);
@@ -180,7 +185,9 @@ void setup() {
 }
 
 void loop() {
-
+    Serial.println(encoder_odometry.getX());
+    printStats();
+    delay(1000);
 }
 
 
@@ -667,6 +674,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     motor2.setPWM(right_pwm);
 
     // serialPrint();
+    // printStats();
     delay(10);
   }
 
@@ -1384,23 +1392,32 @@ void printToOLED(const Waypoint& robotPos) {
 }
 
 void printStats() {
-    oled.clear();
+    // oled.clear();
+    // oled.set2X();
+    int x = encoder_odometry.getX();
+    int y = encoder_odometry.getY();
+    int h = encoder_odometry.getH();
+    int r = static_cast<int>(x / WALL_LENGTH);
+    int c = static_cast<int>(y / WALL_LENGTH);
+
+    oled.print(F("X dist: "));
+    oled.print(x);
+    oled.print(F(" Y dist: "));
+    oled.print(y);
+    oled.print(F(" H: "));
+    oled.println(h);
+
+    // oled.print(F("r: "));
+    // oled.print(r);
+    // oled.print(F("c: "));
+    // oled.println(c);
     
-    oled.print(F("x: "))
-    oled.print();
-    oled.print(F("y: "))
-    oled.print();
-    oled.print(F("r: "))
-    oled.print();
-    oled.print(F("c: "))
-    oled.print();
-    oled.println();
-    
-    oled.print(F("l: "))
-    oled.print();
-    oled.print(F("f: "))
-    oled.print();
-    oled.print(F("r: "))
-    oled.print();
-    oled.println();
+    // oled.print(F("l: "));
+    // oled.print();
+    // oled.print(F("f: "));
+    // oled.print();
+    // oled.print(F("r: "));
+    // oled.print();
+    // oled.println();
+    // oled.set1X();
 }
