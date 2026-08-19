@@ -90,7 +90,7 @@ const float WEST_RAD = PI + HALF_PI;
 
 //Floodfill user-variables
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
-const Waypoint startPoint = {0 * WALL_LENGTH, 0 * WALL_LENGTH};
+const Waypoint startPoint = {7 * WALL_LENGTH, 0 * WALL_LENGTH};
 const Waypoint goalPoint = {4 * WALL_LENGTH, 1 * WALL_LENGTH};
 
 // Function declarations
@@ -151,7 +151,7 @@ void setup() {
   printToOLED(startPoint);
 
     // //search run to Goal
-    searchRun(startPoint, goalPoint);
+    // searchRun(startPoint, goalPoint);
 
     // //search run back to start 
     // searchRun(goalPoint, startPoint);
@@ -1331,11 +1331,12 @@ void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
 // }
 
 
-
+//Gen Ai used to bugfix
 void printToOLED(const Waypoint& robotPos) {
-    int initRow = (robotPos.y >= 6) ? 1 : 0;
+    oled.clear();
+    int initRow = (robotPos.x >= 6) ? 2 : 0; // Start at row 2 if robot is further down
 
-    //print top row
+    // Print top row
     if (initRow == 0) {
         for (int c = 0; c < MAZE_SIZE; c++) {
             oled.print(" ");
@@ -1345,10 +1346,14 @@ void printToOLED(const Waypoint& robotPos) {
         oled.println();
     }
 
-    for (int r = initRow; r < MAZE_SIZE; r++) {
+    // Limit visible rows so total output lines never exceed 8
+    int maxRows = (initRow == 0) ? 7 : 8; 
+    int endRow = min((int)MAZE_SIZE, initRow + maxRows);  // lowk is the min necessary Gemini? lol...
+
+    for (int r = initRow; r < endRow; r++) {
         for (int c = 0; c <= MAZE_SIZE; c++) {
             bool vertPresent = (MAZE_VERTICAL_WALLS[r] & (1 << c));
-            bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << r + 1));
+            bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << (r + 1)));
             oled.print(vertPresent ? "|" : " ");
             oled.print(horiPresent ? "_" : " ");
         }
