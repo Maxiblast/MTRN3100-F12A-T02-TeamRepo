@@ -378,15 +378,6 @@ bool centerToNearestWall() { //will use lidar to scan the local minimum saves sa
     }
   }
 
-  // Prevent accessing lidar[-1] if every reading failed.
-  if (closestSensor < 0 || closestDistance >= 9999.0) {
-    motor1.setPWM(0);
-    motor2.setPWM(0);
-
-    Serial.println("No valid LiDAR found");
-    return false;
-  }
-
   Serial.print("Centering with LiDAR ");
   Serial.println(closestSensor);
 
