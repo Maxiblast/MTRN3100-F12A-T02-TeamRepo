@@ -86,7 +86,7 @@ const float WEST_DEG = 270.0;
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
 const Waypoint startPoint = { 2 * WALL_LENGTH, 0 * WALL_LENGTH};
 float startHeading = SOUTH_RAD;
-const Waypoint goalPoint = {5 * WALL_LENGTH, 1 * WALL_LENGTH};
+const Waypoint goalPoint = {8 * WALL_LENGTH, 4 * WALL_LENGTH};
 // float goalHeading = SOUTH_RAD; //not implementated yet;
 
 void setup() {
@@ -95,7 +95,7 @@ void setup() {
   Wire.begin();
   Wire.setClock(400000L);
   oled.begin(&Adafruit128x64, DISPLAY_ADDRESS);
-  oled.setScrollMode(SCROLL_MODE_AUTO);
+  oled.setScrollMode(SCROLL_MODE_OFF);
   oled.setFont(newbasic3x5);
   oled.clear();
 
@@ -111,87 +111,52 @@ void setup() {
   Serial.println("Done");
   delay(2000);
 
-  // search(startPoint, goalPoint);
+  
+  // path.push_back(startPoint);
+  //   // printPath(path);
+  // printToOLED(startPoint);
+  // delay(1000);
+  // floodfillAppend(path, 0, goalPoint);
+  // printToOLED(startPoint);
+  //   delay(1000);
+  // oled.print("PEEKABOO");
 
-  // searchRun(startPoint, goalPoint);
-
-    // navigateTo(3 * WALL_LENGTH, 0 * WALL_LENGTH, SOUTH_DEG);
-    // printStats();
-    // navigateTo(4 * WALL_LENGTH, 0 * WALL_LENGTH, SOUTH_DEG);
-    // printStats();
-    // navigateTo(5 * WALL_LENGTH, 0 * WALL_LENGTH, SOUTH_DEG);
-    // printStats();
-    // navigateTo(5 * WALL_LENGTH, 1 * WALL_LENGTH, EAST_DEG);
-    // printStats();
-    // navigateTo(5 * WALL_LENGTH, 2 * WALL_LENGTH, EAST_DEG);
-    // printStats();
-
-    // 2,0
-    Waypoint currPoint = startPoint;
-    updateMazeUsingLidar(currPoint, SOUTH_DEG);
-    printToOLED(currPoint);
-    currPoint.x += WALL_LENGTH; 
-    navigateTo(currPoint.x, currPoint.y, SOUTH_DEG);
-
-    //3,0
-    updateMazeUsingLidar(currPoint, SOUTH_DEG);
-    printToOLED(currPoint);
-    currPoint.x += WALL_LENGTH; 
-    navigateTo(currPoint.x, currPoint.y, SOUTH_DEG);
-
-    //4,0
-    updateMazeUsingLidar(currPoint, SOUTH_DEG);
-    printToOLED(currPoint);
-    currPoint.x += WALL_LENGTH; 
-    navigateTo(currPoint.x, currPoint.y, SOUTH_DEG);
-
-    //5,0
-    updateMazeUsingLidar(currPoint, SOUTH_DEG);
-    printToOLED(currPoint);
-    currPoint.y += WALL_LENGTH; 
-    navigateTo(currPoint.x, currPoint.y, EAST_DEG);
-
-    //5,1
-    updateMazeUsingLidar(currPoint, EAST_DEG);
-    printToOLED(currPoint);
+  search(startPoint, goalPoint);
 
 
+    //this works but search doesnt
+    // // 2,0
+    // Waypoint currPoint = startPoint;  
+    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+    // printToOLED(currPoint);
+    // currPoint.x += WALL_LENGTH; 
+    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
 
+    // //3,0
+    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+    // printToOLED(currPoint);
+    // currPoint.x += WALL_LENGTH; 
+    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
 
-    // navigateTo(4 * WALL_LENGTH, 0 * WALL_LENGTH, SOUTH_DEG);
-    // printStats();
-    // navigateTo(5 * WALL_LENGTH, 0 * WALL_LENGTH, SOUTH_DEG);
-    // printStats();
-    // navigateTo(5 * WALL_LENGTH, 1 * WALL_LENGTH, EAST_DEG);
-    // printStats();
-    // navigateTo(5 * WALL_LENGTH, 2 * WALL_LENGTH, EAST_DEG);
-    // printStats();
+    // //4,0
+    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+    // printToOLED(currPoint);
+    // currPoint.x += WALL_LENGTH; 
+    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
+
+    // //5,0
+    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+    // printToOLED(currPoint);
+    // currPoint.y += WALL_LENGTH; 
+    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
+
+    // //5,1
+    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+    // printToOLED(currPoint);
 
 
 
 
-    // currIndex = 0;
-    // encoder_odometry.setPosition(startPoint.x, startPoint.y);
-    // encoder_odometry.setHeading(startHeading);
-    // // path.push_back(startPoint);
-
-    // floodfillAppend(path, 0, goalPoint);
-    // printPathOLED(path);
-    // // floodfillAppend(path, 0, goalPoint);
-    // // printPathOLED(path);
-
-    // navigateTo(path[currIndex].x, path[currIndex].y,)
-    // navigateTo(start.x + , path[currIndex].y,)
-
-
-////////////////////////////////////////////////////////////////    
-    // encoder_odometry.setPosition(startPoint.x, startPoint.y);
-    // encoder_odometry.setHeading(startHeading);
-    
-    // path.push_back(startPoint);
-    // // printPath(path);
-    // floodfillAppend(path, 0, goalPoint);
-    // printPath(path);
     // Waypoint finalPath[path.size()];
     // for (int i{0}; i < path.size(); i++) {
     //   finalPath[i] = path[i];
@@ -914,22 +879,32 @@ bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, int range) {
     return distance <= range;
 }
 
+    // updateMazeUsingLidar(currPoint, SOUTH_DEG);
+    // printToOLED(currPoint);
+    // currPoint.x += WALL_LENGTH; 
+    // navigateTo(currPoint.x, currPoint.y, SOUTH_DEG);
+
+
 void search(const Waypoint& begin, const Waypoint endPoint) {
   Waypoint currPoint = begin;
   while(!isAtTarget(currPoint, endPoint, FF_GOAL_TOLERANCE)) {
-    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());  // there is a problem.
-    // printToOLED(currPoint);
-    printStats();
+    updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+    printToOLED(currPoint);
+    // printStats();
     Waypoint nextPoint = floodfillNext(path, endPoint);
+    // printPointOLED(nextPoint);
+    delay(1000);
     navigateTo(nextPoint.x, nextPoint.y, headingFromPoints(currPoint, nextPoint));
     currPoint = nextPoint;
   }
+  updateMazeUsingLidar(currPoint, encoder_odometry.getH());
+  printToOLED(currPoint);
 }
 
 //should just make a new floodfill but I dont want to cause that already works. i think.
 //errors occur if path size is not greater that 1 idk how that happens. 
 Waypoint floodfillNext(Vector<Waypoint>& path, Waypoint endPoint) {
-  path.empty();
+  path.clear();
   Waypoint currPoint = {encoder_odometry.getX(), encoder_odometry.getY()};
   path.push_back(currPoint);
   floodfillAppend(path, 0, endPoint);
@@ -1194,3 +1169,9 @@ void printLidarSerial(){
   Serial.println(rightDist);
 }
 
+void printPointOLED(Waypoint point) {
+  oled.print("X: ");
+  oled.print(point.x);
+  oled.print("Y: ");
+  oled.println(point.y);
+}
