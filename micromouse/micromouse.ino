@@ -55,29 +55,31 @@ void setup() {
 }
 
 // set to the actual provided starting orientation before each maze
-#define START_HEADING_DEG -180.0
+#define START_HEADING_DEG 0.0
 
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
     {270, 270},
-    {630, 270},
-    {630, 90},
-    {1170, 90},
-    {1170, 270},
-    {810, 270}
+    {417, 237},
+    {663, 57},
+    {1137, 123},
+    {1137, 237},
+    {843, 483},
+    {663, 597},
+    {597, 777},
+    {483, 957},
+    {237, 1317},
+    {90, 1350}
   };
 
-  // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-  // int final_heading_deg = 90.0;
+  int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
+  int final_heading_deg = 90.0;
 
-  // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
-  // resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
-  // purePursuitPath(path, numberOfWaypoints, final_heading_deg);
-
-  // for (int i = 0; i < sizeof(path); i++) { 
-  //   navigateTo(path[i].x, path[i].y, encoder_odometry.getH());
-  // }
+  encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
+  resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
+  //purePursuitPath(path, numberOfWaypoints, final_heading_deg);
+  navigateToWaypoints(path, numberOfWaypoints, final_heading_deg);
 
   while (true) {};
 }
@@ -226,14 +228,27 @@ void navigateTo(float tx, float ty, float th_deg) {
   turnToHeading(th_deg);
 }
 
+void navigateToWaypoints(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
+  for (int i = 1; i < num_waypoints; i++) {
+    float heading;
+    if (i == num_waypoints - 1) {
+      heading = final_heading_deg;
+    } else {
+      heading = atan2(waypoints[i + 1].y - waypoints[i].y, waypoints[i + 1].x - waypoints[i].x) * 180.0 / PI;
+    }
+    navigateTo(waypoints[i].x, waypoints[i].y, heading);
+  }
+}
+
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
   const float LOOKAHEAD = 10.0;
   const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
-  int current_segment = 0;  // which segment we're tracking
+  int current_segment = 0;  
   leftVelocityController.reset(encoder1.getRotation());
   rightVelocityController.reset(encoder2.getRotation());
+ 
 
   while (true) {
     updateOdometry();
@@ -349,3 +364,4 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
   // final heading correction
   turnToHeading(final_heading_deg);
 }
+

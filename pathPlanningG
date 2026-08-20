@@ -4,8 +4,6 @@ import json
 import os
 import sys
 import subprocess
-import heapq
-import itertools
 
 
 def open_image(path):
@@ -20,13 +18,57 @@ def open_image(path):
     except Exception as e:
         print(f"(Could not auto-open {path}: {e}. Open it manually.)")
 
-IMAGE_PATH   = "maze15.jpg"
+IMAGE_PATH   = "maze17.jpg"
 START_CELL   = (5, 7)
 GOAL_CELL    = (1, 7)
 START_HEADING = "N"
 END_HEADING   = "E"
 OUTPUT_PREFIX = "maze_run"
 GRID_CELLS    = 9
+
+# ---------------------------------------------------------------------------
+# WALL OVERRIDES
+# ---------------------------------------------------------------------------
+# The auto-detected walls are pulled from the photo -- they're only as good
+# as what's actually built on the board. If you know a specific edge is
+# wrong (e.g. you've confirmed by eye that a "wall" the detector found is
+# actually open, or you've physically removed/opened a wall on the real
+# maze since the photo was taken), list it here and it will override the
+# detector for that edge only. This does NOT invent a path through a wall
+# that's still really there -- it only changes what the solver *thinks*
+# is open, so make sure the override matches physical reality before you
+# drive the robot.
+#
+# Edges are given as (row, col, direction) meaning "the wall on the
+# `direction` side of cell (row, col)". direction is one of "N","S","E","W".
+# Value True = force wall (blocked), False = force open (no wall).
+#
+# For (1,7) -> (7,1) on this board, the detector found the goal cell sealed
+# inside a 16-cell pocket by a *closed loop* of 16 real wall edges (see the
+# printed [seal] list below when you run this). Opening ANY ONE of them is
+# enough to connect the two regions. Nothing is opened by default --
+# uncomment exactly one line below once you've verified (or created) that
+# opening on the real board:
+
+WALL_OVERRIDES = {
+    # Every line below was individually verified (by actually re-running
+    # BFS with that one edge opened) to connect START_CELL=(1,7) all the
+    # way through to GOAL_CELL=(7,1) -- opening any ONE of them is enough.
+    # ((7, 4), "E"): False,   # opens edge to (7, 5)
+    # ((5, 5), "N"): False,   # opens edge to (4, 5)
+    # ((7, 1), "N"): False,   # opens edge to (6, 1)
+    # ((8, 4), "E"): False,   # opens edge to (8, 5)
+    # ((6, 5), "S"): False,   # opens edge to (7, 5)
+    # ((5, 4), "N"): False,   # opens edge to (4, 4)
+    # ((6, 6), "S"): False,   # opens edge to (7, 6)
+    # ((6, 6), "E"): False,   # opens edge to (6, 7)
+    # ((5, 6), "N"): False,   # opens edge to (4, 6)
+    # ((5, 6), "E"): False,   # opens edge to (5, 7)
+    # ((7, 2), "N"): False,   # opens edge to (6, 2)
+    # ((5, 3), "N"): False,   # opens edge to (4, 3)
+    # ((5, 3), "W"): False,   # opens edge to (5, 2)
+    # ((6, 3), "W"): False,   # opens edge to (6, 2)
+}
 
 CELL = 100
 PAD  = 150
@@ -38,11 +80,10 @@ MM_PER_PX = CELL_MM / CELL
 ROBOT_RADIUS_PX = (ROBOT_LENGTH_MM / 2.0) / MM_PER_PX
 SAFETY_BUFFER_PX = 1.5
 CLEARANCE_PX = ROBOT_RADIUS_PX + SAFETY_BUFFER_PX
-WAYPOINT_EXTRA_PX = 1.0
 
-# --- Cyan Pillar Detection Constants ---
-POST_MIN_AREA_PX = 40
-POST_DILATE_ITERS = 1
+PER_SIDE_CLEARANCE_MM = (CELL_MM - ROBOT_LENGTH_MM) / 2.0
+PER_SIDE_CLEARANCE_PX = PER_SIDE_CLEARANCE_MM / MM_PER_PX
+
 
 CORNER_COLOR_RANGES = {
     "pink":   [(np.array([160, 25, 90]),  np.array([180, 255, 255])),
@@ -125,14 +166,9 @@ def log_corner_orientation(crop):
     return markers
 
 
-def teal_mask_of(img):
-    b, g, r = cv2.split(img.astype(int))
-    mask = ((b > 110) & (g > 110) & (r < g - 15) & (r < b - 15)).astype(np.uint8) * 255
-    return mask
-
-
 def detect_grid_homography(crop, ncells=GRID_CELLS, cell_px=CELL, pad_px=PAD):
-    teal_mask = teal_mask_of(crop)
+    b, g, r = cv2.split(crop.astype(int))
+    teal_mask = ((b > 110) & (g > 110) & (r < g - 15) & (r < b - 15)).astype(np.uint8) * 255
     kernel = np.ones((5, 5), np.uint8)
     teal_mask = cv2.dilate(teal_mask, kernel, iterations=1)
 
@@ -291,28 +327,6 @@ def detect_obstacle_mask_and_circles(gray, cell_px=CELL):
     return obstacle_mask.astype(bool), circles
 
 
-def detect_post_obstacles(warped, min_area_px=POST_MIN_AREA_PX):
-    gray_shape = warped.shape[:2]
-    teal_mask = teal_mask_of(warped)
-    kernel = np.ones((5, 5), np.uint8)
-    teal_mask = cv2.dilate(teal_mask, kernel, iterations=POST_DILATE_ITERS)
-
-    n, labels, stats, centroids = cv2.connectedComponentsWithStats(teal_mask)
-
-    post_circles = []
-    post_mask = np.zeros(gray_shape, dtype=np.uint8)
-    for i in range(1, n):
-        area = stats[i, cv2.CC_STAT_AREA]
-        if area < min_area_px:
-            continue
-        cx, cy = centroids[i]
-        radius = float(np.sqrt(area / np.pi))
-        post_circles.append((float(cx), float(cy), radius))
-        cv2.circle(post_mask, (int(round(cx)), int(round(cy))), int(radius + 4), 1, -1)
-
-    return post_mask.astype(bool), post_circles
-
-
 def cell_for_point(x, y, ncells, cell_px=CELL, pad_px=PAD):
     col = int(round((x - pad_px) / cell_px - 0.5))
     row = int(round((y - pad_px) / cell_px - 0.5))
@@ -323,11 +337,7 @@ def cell_for_point(x, y, ncells, cell_px=CELL, pad_px=PAD):
 
 def detect_walls_and_obstacles(warped, ncells, cell_px=CELL, pad_px=PAD):
     gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
-    
     obstacle_mask, circles = detect_obstacle_mask_and_circles(gray, cell_px)
-    post_mask, post_circles = detect_post_obstacles(warped)
-    
-    combined_mask = obstacle_mask | post_mask
     sobel_mag = compute_sobel_magnitude(gray)
 
     N = ncells + 1
@@ -336,18 +346,52 @@ def detect_walls_and_obstacles(warped, ncells, cell_px=CELL, pad_px=PAD):
         for i in range(N - 1):
             h_edges[(i, j)] = is_wall(gray, node(i, j, cell_px, pad_px),
                                        node(i + 1, j, cell_px, pad_px),
-                                       combined_mask, sobel_mag)
+                                       obstacle_mask, sobel_mag)
     for j in range(N - 1):
         for i in range(N):
             v_edges[(i, j)] = is_wall(gray, node(i, j, cell_px, pad_px),
                                        node(i, j + 1, cell_px, pad_px),
-                                       combined_mask, sobel_mag)
+                                       obstacle_mask, sobel_mag)
 
     blocked_cells = set()
     for x, y, r in circles:
         blocked_cells.add(cell_for_point(x, y, ncells, cell_px, pad_px))
 
-    return h_edges, v_edges, blocked_cells, circles, post_circles
+    return h_edges, v_edges, blocked_cells, circles
+
+
+def apply_wall_overrides(h_edges, v_edges, overrides, ncells):
+    # Translate each (cell, direction) override into the underlying
+    # h_edges/v_edges key and stamp the requested value directly onto it.
+    # This is the ONLY place overrides take effect -- everything downstream
+    # (BFS, clearance checks, waypoint generation) just sees updated edges,
+    # so an opened wall is treated exactly like a real detected opening.
+    applied = []
+    for (r, c), d in list(overrides.keys()):
+        val = overrides[((r, c), d)]
+        if d == "N":
+            if r == 0:
+                continue
+            key, table = (c, r), h_edges
+        elif d == "S":
+            if r == ncells - 1:
+                continue
+            key, table = (c, r + 1), h_edges
+        elif d == "E":
+            if c == ncells - 1:
+                continue
+            key, table = (c + 1, r), v_edges
+        elif d == "W":
+            if c == 0:
+                continue
+            key, table = (c, r), v_edges
+        else:
+            continue
+        old = table.get(key)
+        table[key] = val
+        applied.append(((r, c), d, old, val))
+    return applied
+
 
 def blocked(h_edges, v_edges, blocked_cells, r, c, direction, ncells, avoid_obstacles=False):
     if avoid_obstacles and (r, c) in blocked_cells:
@@ -372,18 +416,14 @@ def blocked(h_edges, v_edges, blocked_cells, r, c, direction, ncells, avoid_obst
 
 DIRS = {"N": (-1, 0), "S": (1, 0), "E": (0, 1), "W": (0, -1)}
 
-def astar(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=False):
-    def heuristic(a, b):
-        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+def bfs(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=False):
+    from collections import deque
 
-    open_set = []
-    heapq.heappush(open_set, (0, start))
-
+    queue = deque([start])
     came_from = {start: None}
-    g_score = {start: 0}
 
-    while open_set:
-        _, cur = heapq.heappop(open_set)
+    while queue:
+        cur = queue.popleft()
 
         if cur == goal:
             path = [goal]
@@ -399,13 +439,9 @@ def astar(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=
             nxt = (r + dr, c + dc)
             if avoid_obstacles and nxt in blocked_cells:
                 continue
-            tentative_g = g_score[cur] + 1
-
-            if tentative_g < g_score.get(nxt, float('inf')):
+            if nxt not in came_from:
                 came_from[nxt] = cur
-                g_score[nxt] = tentative_g
-                f_score = tentative_g + heuristic(nxt, goal)
-                heapq.heappush(open_set, (f_score, nxt))
+                queue.append(nxt)
 
     return None
 
@@ -426,6 +462,33 @@ def reachable_cells(h_edges, v_edges, blocked_cells, start, ncells, avoid_obstac
                 seen.add(nxt)
                 q.append(nxt)
     return seen
+
+
+def find_seal(h_edges, v_edges, blocked_cells, start, goal, ncells):
+    # If start can't reach goal, find the boundary of GOAL's own sealed
+    # region, then test each candidate edge by actually re-running BFS with
+    # only that one edge opened. This distinguishes edges that reconnect
+    # all the way to `start` from edges that only open into some other
+    # small isolated pocket (which happens on boards with more than one
+    # sealed-off area) -- so what gets reported is verified to work alone,
+    # not just "borders a different cell".
+    reach_goal = reachable_cells(h_edges, v_edges, blocked_cells, goal, ncells)
+    if start in reach_goal:
+        return None
+    boundary = []
+    for (r, c) in reach_goal:
+        for d, (dr, dc) in DIRS.items():
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < ncells and 0 <= nc < ncells and (nr, nc) not in reach_goal:
+                boundary.append(((r, c), d, (nr, nc)))
+
+    verified = []
+    for (r, c), d, nxt in boundary:
+        h2, v2 = dict(h_edges), dict(v_edges)
+        apply_wall_overrides(h2, v2, {((r, c), d): False}, ncells)
+        if bfs(h2, v2, blocked_cells, start, goal, ncells) is not None:
+            verified.append(((r, c), d, nxt))
+    return verified
 
 
 def find_effective_start(h_edges, v_edges, blocked_cells, desired_start, goal, ncells):
@@ -519,115 +582,24 @@ def _seg_seg_dist(p1, p2, p3, p4):
     )
 
 
-def has_line_of_sight(p1, p2, wall_segs, circle_keepouts, wall_margin=CLEARANCE_PX):
-    """circle_keepouts: list of (cx, cy, keepout_radius) -- the exact distance
-    the segment must stay from that circle's center. Callers precompute the
-    keepout per circle (normally r + margin) so this function has no opinion
-    on which circles are obstacles vs. posts, or on any per-pair relaxation."""
-    # 1. Check heavy clearance against walls
+def has_line_of_sight(p1, p2, wall_segs, circles, wall_margin=CLEARANCE_PX, obs_margin=CLEARANCE_PX):
     for w1, w2 in wall_segs:
         if _seg_seg_dist(p1, p2, w1, w2) < wall_margin:
             return False
-
-    # 2. Check clearance against every circle (obstacles and posts alike)
-    for cx, cy, keepout in circle_keepouts:
-        if _seg_point_dist(p1, p2, (cx, cy)) < keepout:
+    for cx, cy, r in circles:
+        if _seg_point_dist(p1, p2, (cx, cy)) < r + obs_margin:
             return False
-
     return True
 
 
-def circle_tangent_points(cx, cy, r, margin, n=24, extra=WAYPOINT_EXTRA_PX):
-    """Points on the inflated boundary of a circular obstacle (radius r + margin).
-    Used as extra visibility-graph nodes so the shortest path can hug a
-    freestanding obstacle at an angle instead of being confined to the
-    surrounding cell's corners."""
-    R = r + margin + extra
-    return [(cx + R * np.cos(2 * np.pi * k / n), cy + R * np.sin(2 * np.pi * k / n))
-            for k in range(n)]
-
-
-def visibility_shortest_path(coarse_cell_path, start_px, goal_px, wall_segs, circles, post_circles,
-                              cell_px=CELL, pad_px=PAD,
-                              corner_margin_px=CLEARANCE_PX + WAYPOINT_EXTRA_PX,
-                              obs_margin_px=CLEARANCE_PX,
-                              extra_cells=None):
-    m = corner_margin_px
-    nodes = {"start": start_px, "goal": goal_px}
-    node_owner = {}  # node key -> circle idx it was generated from, if any
-    all_cells = set(coarse_cell_path)
-    if extra_cells:
-        all_cells |= set(extra_cells)
-    for (r, c) in all_cells:
-        x0, y0 = node(c, r, cell_px, pad_px)
-        x1, y1 = node(c + 1, r + 1, cell_px, pad_px)
-        for k, corner in enumerate([(x0 + m, y0 + m), (x1 - m, y0 + m),
-                                     (x1 - m, y1 - m), (x0 + m, y1 - m)]):
-            nodes[(r, c, k)] = corner
-
-    # Extra nodes tangent to each freestanding cylindrical obstacle -- lets the
-    # search cut a smooth diagonal path around obstacles rather than only
-    # bending at cell corners.
-    for idx, (cx, cy, r) in enumerate(circles):
-        for k, pt in enumerate(circle_tangent_points(cx, cy, r, obs_margin_px)):
-            key = ("obs", idx, k)
-            nodes[key] = pt
-            node_owner[key] = idx
-
-    # Base keepout radius for every circle: true radius + full clearance margin.
-    base_keepouts = [(cx, cy, r + obs_margin_px) for (cx, cy, r) in circles]
-    post_keepouts = [(cx, cy, r + CLEARANCE_PX) for (cx, cy, r) in post_circles]
-
-    keys = list(nodes.keys())
-    adj = {k: [] for k in keys}
-
-    for a, b in itertools.combinations(keys, 2):
-        pa, pb = nodes[a], nodes[b]
-        owner_a, owner_b = node_owner.get(a), node_owner.get(b)
-        if owner_a is not None and owner_a == owner_b:
-            # Both endpoints are tangent points of the SAME obstacle circle.
-            # The straight chord between them dips a fraction of a pixel
-            # inside the r+margin inflation ring by construction (polygon
-            # sagitta), which would otherwise make a circle reject its own
-            # boundary points. Relax that one circle to its true physical
-            # radius for this pair -- still guaranteed outside the actual
-            # obstacle -- while every other circle/wall/post keeps full margin.
-            keepouts = [(cx, cy, r if idx == owner_a else r + obs_margin_px)
-                        for idx, (cx, cy, r) in enumerate(circles)]
-        else:
-            keepouts = base_keepouts
-        if has_line_of_sight(pa, pb, wall_segs, keepouts + post_keepouts):
-            d = float(np.hypot(pa[0] - pb[0], pa[1] - pb[1]))
-            adj[a].append((d, b))
-            adj[b].append((d, a))
-
-    dist = {k: float('inf') for k in keys}
-    dist["start"] = 0.0
-    prev = {}
-    pq = [(0.0, "start")]
-    visited = set()
-    while pq:
-        d, u = heapq.heappop(pq)
-        if u in visited:
-            continue
-        visited.add(u)
-        if u == "goal":
-            break
-        for w, v in adj[u]:
-            nd_ = d + w
-            if nd_ < dist[v]:
-                dist[v] = nd_
-                prev[v] = u
-                heapq.heappush(pq, (nd_, v))
-
-    if dist["goal"] == float('inf'):
-        return None
-
-    key_path = ["goal"]
-    while key_path[-1] != "start":
-        key_path.append(prev[key_path[-1]])
-    key_path.reverse()
-    return [nodes[k] for k in key_path]
+def min_wall_clearance_px(path, wall_segs, circles):
+    best = float('inf')
+    for p1, p2 in zip(path, path[1:]):
+        for w1, w2 in wall_segs:
+            best = min(best, _seg_seg_dist(p1, p2, w1, w2))
+        for cx, cy, r in circles:
+            best = min(best, _seg_point_dist(p1, p2, (cx, cy)) - r)
+    return best
 
 
 def pixel_path_to_mm(pixel_path, cell_px=CELL, pad_px=PAD, cell_mm=180.0, flip_xy=True):
@@ -648,12 +620,30 @@ def format_waypoints_c_array(waypoints):
     return "\n".join(lines)
 
 
+def cell_path_to_axis_waypoints(grid_path, cell_px=CELL, pad_px=PAD):
+    if not grid_path:
+        return []
+    pts = [node(c + 0.5, r + 0.5, cell_px, pad_px) for r, c in grid_path]
+    if len(pts) == 1:
+        return pts
+
+    waypoints = [pts[0]]
+    for i in range(1, len(pts) - 1):
+        prev_pt, cur_pt, next_pt = pts[i - 1], pts[i], pts[i + 1]
+        dir1 = (round(cur_pt[0] - prev_pt[0], 3), round(cur_pt[1] - prev_pt[1], 3))
+        dir2 = (round(next_pt[0] - cur_pt[0], 3), round(next_pt[1] - cur_pt[1], 3))
+        if dir1 != dir2:
+            waypoints.append(cur_pt)
+    waypoints.append(pts[-1])
+    return waypoints
+
+
 def path_length_px(pixel_path):
     return sum(np.hypot(pixel_path[i+1][0]-pixel_path[i][0], pixel_path[i+1][1]-pixel_path[i][1])
                for i in range(len(pixel_path)-1))
 
 
-def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, post_circles, out_path,
+def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, out_path,
                   requested_start=None, effective_start=None,
                   cell_px=CELL, pad_px=PAD):
     overlay = warped.copy()
@@ -673,10 +663,6 @@ def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles
         for x, y, r in circles:
             cv2.circle(overlay, (int(x), int(y)), int(r), (0, 0, 255), -1)
             cv2.putText(overlay, "OBS", (int(x)-15, int(y)+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)
-
-    if post_circles:
-        for x, y, r in post_circles:
-            cv2.circle(overlay, (int(x), int(y)), max(int(r), 3), (255, 255, 0), 2)
 
     if grid_path:
         pts_line = [nd(c + 0.5, r + 0.5) for r, c in grid_path]
@@ -700,6 +686,7 @@ def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles
 
 def main():
     crop = load_and_crop(IMAGE_PATH)
+
     log_corner_orientation(crop)
 
     warped, H, N = detect_grid_homography(crop, ncells=GRID_CELLS)
@@ -709,98 +696,94 @@ def main():
     input_path = f"{OUTPUT_PREFIX}_input.png"
     cv2.imwrite(input_path, warped)
 
-    h_edges, v_edges, blocked_cells, circles, post_circles = detect_walls_and_obstacles(warped, ncells)
-    
-    print(f"[posts] detected {len(post_circles)} cyan/teal grid posts. The algorithm will now "
-          f"keep the same {CLEARANCE_PX:.1f}px clearance from them as from any other wall.")
+    h_edges, v_edges, blocked_cells, circles = detect_walls_and_obstacles(warped, ncells)
+
+    if WALL_OVERRIDES:
+        applied = apply_wall_overrides(h_edges, v_edges, WALL_OVERRIDES, ncells)
+        for (r, c), d, old, new in applied:
+            print(f"[override] cell {(r,c)} side {d}: wall={old} -> wall={new} "
+                  f"(make sure this matches what's physically on the board!)")
 
     print(f"\n[clearance] robot length {ROBOT_LENGTH_MM:.0f}mm, cell size {CELL_MM:.0f}mm -> "
           f"keeping the path at least {CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) "
-          f"from every wall/obstacle/post edge, including at turns. That leaves the robot's physical "
+          f"from every wall/obstacle edge, including at turns. That leaves the robot's physical "
           f"edge ~{CLEARANCE_PX*MM_PER_PX - ROBOT_LENGTH_MM/2:.1f}mm clear of every wall.")
 
-    effective_start, snapped, snap_dist = find_effective_start(
-        h_edges, v_edges, blocked_cells, START_CELL, GOAL_CELL, ncells)
+    if bfs(h_edges, v_edges, blocked_cells, START_CELL, GOAL_CELL, ncells) is None:
+        seal = find_seal(h_edges, v_edges, blocked_cells, START_CELL, GOAL_CELL, ncells)
+        print(f"\n[SEALED] No wall-legal route exists from {START_CELL} to {GOAL_CELL} on this "
+              f"board as detected. These are the {len(seal)} wall edges forming the closed "
+              f"boundary between them -- opening ANY ONE of them (both in reality and in "
+              f"WALL_OVERRIDES above) would connect the two regions:")
+        for (r, c), d, nxt in seal:
+            print(f"    ((({r}, {c}), \"{d}\")): False,   # opens edge to {nxt}")
+        print("\nNot proceeding with a fabricated path -- add a real/confirmed opening to "
+              "WALL_OVERRIDES above (and physically open it on the board before driving the "
+              "robot), then re-run.")
 
-    if snapped:
-        print(f"\n[warn] Requested START_CELL={START_CELL} has NO legal exits -- it is "
-              f"wall-sealed off from GOAL_CELL={GOAL_CELL}. Auto-snapping to the nearest "
-              f"connected cell {effective_start} ({snap_dist:.1f} cells away).")
-    else:
-        print(f"\nSTART_CELL={START_CELL} confirmed connected to GOAL_CELL -- no snapping needed.")
-
-    grid_path = astar(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells)
-    wall_reachable = reachable_cells(h_edges, v_edges, blocked_cells, effective_start, ncells)
-
-    if grid_path is None:
         overlay_path = f"{OUTPUT_PREFIX}_overlay.png"
-        save_overlay(warped, ncells, h_edges, v_edges, None, None, circles, post_circles, overlay_path,
-                     requested_start=START_CELL, effective_start=effective_start)
+        save_overlay(warped, ncells, h_edges, v_edges, None, None, circles, overlay_path,
+                     requested_start=START_CELL, effective_start=None)
         combined_path = f"{OUTPUT_PREFIX}_input_vs_output.png"
         out_img = cv2.imread(overlay_path)
         combined = cv2.hconcat([warped, out_img])
         cv2.imwrite(combined_path, combined)
-        print("NO PATH FOUND between", effective_start, "and", GOAL_CELL, "(unexpected)")
-        open_image(combined_path)
         return
 
-    segs = wall_segments(h_edges, v_edges)
-    sr, sc = effective_start
-    gr, gc = GOAL_CELL
-    start_px = node(sc + 0.5, sr + 0.5)
-    goal_px = node(gc + 0.5, gr + 0.5)
-    
-    # We now pass circles and post_circles distinctly 
-    free_path = visibility_shortest_path(grid_path, start_px, goal_px, segs, circles, post_circles,
-                                          extra_cells=wall_reachable)
+    effective_start, snapped, snap_dist = find_effective_start(
+        h_edges, v_edges, blocked_cells, START_CELL, GOAL_CELL, ncells)
 
-    if free_path is None:
-        print("[warn] any-angle visibility search couldn't certify a clean, clearance-respecting "
-              "route for this start/goal. Trying a STRICT obstacle-avoiding grid path instead "
+    grid_path = bfs(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells)
+
+    segs = wall_segments(h_edges, v_edges)
+    free_path = cell_path_to_axis_waypoints(grid_path)
+
+    def path_clears(path):
+        return all(has_line_of_sight(p1, p2, segs, circles) for p1, p2 in zip(path, path[1:]))
+
+    if not path_clears(free_path):
+        print("[warn] the straight/orthogonal route couldn't certify "
+              f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) of clearance from a wall or "
+              "obstacle along the way. Trying a STRICT obstacle-avoiding grid path instead "
               "(one that never enters a cell containing an obstacle at all).")
-        safe_grid_path = astar(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells,
-                                avoid_obstacles=True)
+        safe_grid_path = bfs(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells,
+                              avoid_obstacles=True)
         if safe_grid_path is None:
             obstacle_cells_on_path = [c for c in grid_path if c in blocked_cells]
             print(f"\n[UNSAFE] No route exists from {effective_start} to {GOAL_CELL} that "
-                  f"avoids every obstacle cell entirely -- every wall-legal corridor is forced "
-                  f"through {obstacle_cells_on_path}, and the any-angle solver could not confirm "
-                  f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) of clearance around the "
-                  f"obstacle(s) there either. This is right at the edge of what's geometrically "
-                  f"possible for a {ROBOT_LENGTH_MM:.0f}mm robot -- NOT a pathfinding bug.")
-            for (r, c) in obstacle_cells_on_path:
-                for (cx, cy, rad) in circles:
-                    if cell_for_point(cx, cy, ncells) == (r, c):
-                        print(f"  - cell {(r, c)}: obstacle radius {rad*MM_PER_PX:.1f}mm, "
-                              f"needs {(rad+CLEARANCE_PX)*MM_PER_PX:.1f}mm clear radius to pass "
-                              f"through this cell's center, but only "
-                              f"{(CELL/2)*MM_PER_PX:.1f}mm is available to the cell edge.")
-            print("  Fix options: nudge/move that obstacle away from the corridor, reduce "
-                  "ROBOT_LENGTH_MM/SAFETY_BUFFER_PX if the real robot is smaller than modeled, "
-                  "or pick a different start/goal. Proceeding with the obstacle-agnostic grid "
-                  "path below FOR REFERENCE ONLY -- it drives straight through the obstacle "
-                  "cell(s) above and should NOT be sent to the robot as-is.")
-            free_path = [node(c + 0.5, r + 0.5) for r, c in grid_path]
+                  f"avoids every obstacle cell entirely.")
         else:
-            print("[ok] found a strict obstacle-avoiding grid route -- longer, but guaranteed "
-                  "to never enter a cell that contains an obstacle.")
+            print("[ok] found a strict obstacle-avoiding grid route.")
             grid_path = safe_grid_path
-            free_path = [node(c + 0.5, r + 0.5) for r, c in grid_path]
+            free_path = cell_path_to_axis_waypoints(grid_path)
     else:
-        print(f"\n[any-angle] routed through the full wall-reachable region "
-              f"({len(wall_reachable)} cells) so obstacles that don't fit inside a "
-              f"single coarse cell (given the {CLEARANCE_PX:.1f}px clearance) get "
-              f"detoured around via neighboring cells instead of blocking the search.")
+        print(f"\n[ok] straight/orthogonal route through {len(grid_path)} cells keeps "
+              f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) clearance the whole way -- "
+              f"only left/right turns, no diagonals.")
+
+    measured_centerline_to_wall_px = min_wall_clearance_px(free_path, segs, circles)
+    measured_centerline_to_wall_mm = measured_centerline_to_wall_px * MM_PER_PX
+    robot_edge_gap_mm = measured_centerline_to_wall_mm - ROBOT_LENGTH_MM / 2.0
+    if measured_centerline_to_wall_px < CLEARANCE_PX - 1e-6:
+        print(f"\n[UNSAFE] Measured centerline-to-wall distance is only "
+              f"{measured_centerline_to_wall_mm:.1f}mm, which leaves just {robot_edge_gap_mm:.1f}mm "
+              f"of physical clearance for a {ROBOT_LENGTH_MM:.0f}mm-wide robot -- below the "
+              f"{SAFETY_BUFFER_PX*MM_PER_PX:.1f}mm safety buffer. Do not send this path to the robot.")
+    else:
+        print(f"\n[verified] Robot ({ROBOT_LENGTH_MM:.0f}mm) stays centered between walls -- "
+              f"measured {robot_edge_gap_mm:.1f}mm of physical clearance between the robot's "
+              f"edge and the nearest wall. No collisions.")
 
     grid_len_cells = len(grid_path) - 1
     free_len_px = path_length_px(free_path)
     free_len_cells_equiv = free_len_px / CELL
     print(f"\nGrid-constrained path: {grid_len_cells} cell-moves")
-    print(f"Any-angle shortest path: {free_len_px:.1f}px "
-          f"(~{free_len_cells_equiv:.2f} cell-widths) through {len(free_path)} points")
+    print(f"Orthogonal (L/R-turn-only) path: {free_len_px:.1f}px "
+          f"(~{free_len_cells_equiv:.2f} cell-widths) through {len(free_path)} waypoints "
+          f"(turn points only)")
 
     overlay_path = f"{OUTPUT_PREFIX}_overlay.png"
-    save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, post_circles, overlay_path,
+    save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, overlay_path,
                  requested_start=START_CELL, effective_start=effective_start)
 
     combined_path = f"{OUTPUT_PREFIX}_input_vs_output.png"
@@ -808,12 +791,13 @@ def main():
     combined = cv2.hconcat([warped, out_img])
     cv2.imwrite(combined_path, combined)
 
-    print("\nAny-angle path (pixel coords on warped image):")
+    print("\nOrthogonal path, turn points only (pixel coords on warped image):")
     for x, y in free_path:
         print(f"  ({x:.1f}, {y:.1f})")
 
     waypoints_mm = pixel_path_to_mm(free_path, cell_mm=CELL_MM, flip_xy=True)
-    print(f"\nWaypoints (mm, {int(CELL_MM)}mm/cell, axes flipped, any-angle turn-points only):")
+    print(f"\nWaypoints (mm, {int(CELL_MM)}mm/cell, axes flipped, turn-points only, "
+          f"straight segments between them -- no diagonals):")
     print("{")
     print(format_waypoints_c_array(waypoints_mm))
     print("}")
@@ -841,7 +825,6 @@ def main():
         "free_path_px": free_path,
         "free_path_length_px": free_len_px,
         "waypoints_mm": waypoints_mm,
-        "post_circles_px": post_circles,
     }, open(result_path, "w"), indent=2)
 
     open_image(combined_path)

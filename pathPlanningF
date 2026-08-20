@@ -20,9 +20,9 @@ def open_image(path):
     except Exception as e:
         print(f"(Could not auto-open {path}: {e}. Open it manually.)")
 
-IMAGE_PATH   = "maze17.jpg"
-START_CELL   = (5, 6)
-GOAL_CELL    = (7, 1)
+IMAGE_PATH   = "maze15.jpg"
+START_CELL   = (5, 7)
+GOAL_CELL    = (1, 1)
 START_HEADING = "N"
 END_HEADING   = "E"
 OUTPUT_PREFIX = "maze_run"
@@ -39,6 +39,14 @@ ROBOT_RADIUS_PX = (ROBOT_LENGTH_MM / 2.0) / MM_PER_PX
 SAFETY_BUFFER_PX = 1.5
 CLEARANCE_PX = ROBOT_RADIUS_PX + SAFETY_BUFFER_PX
 WAYPOINT_EXTRA_PX = 1.0
+
+# The cylindrical obstacles are a KNOWN physical size (100mm radius). Image
+# contour detection under-measures this (foreshortening / thresholding
+# shrinks the apparent blob, seen as ~50-63mm on this photo) which is unsafe
+# to plan against -- so detected radius is used only to help LOCATE each
+# obstacle's center; the true radius below is always used for clearance math.
+OBSTACLE_RADIUS_MM = 100.0
+OBSTACLE_RADIUS_PX = OBSTACLE_RADIUS_MM / MM_PER_PX
 
 # --- Cyan Pillar Detection Constants ---
 POST_MIN_AREA_PX = 40
@@ -274,6 +282,8 @@ def detect_obstacle_mask_and_circles(gray, cell_px=CELL):
 
     obstacle_mask = np.zeros(gray.shape, dtype=np.uint8)
     circles = []
+    # These bounds only need to identify/locate each obstacle blob -- the
+    # true radius used for all clearance math is OBSTACLE_RADIUS_PX below.
     min_area = (cell_px * 0.2) ** 2 * np.pi
     max_area = (cell_px * 0.6) ** 2 * np.pi
 
@@ -284,9 +294,12 @@ def detect_obstacle_mask_and_circles(gray, cell_px=CELL):
             if perimeter > 0:
                 circularity = 4 * np.pi * area / (perimeter * perimeter)
                 if circularity > 0.60:
-                    (x, y), radius = cv2.minEnclosingCircle(cnt)
-                    circles.append((x, y, radius))
-                    cv2.circle(obstacle_mask, (int(x), int(y)), int(radius + 6), 1, -1)
+                    (x, y), detected_radius = cv2.minEnclosingCircle(cnt)
+                    # Use the KNOWN true radius for safety -- detected_radius
+                    # is only used above to identify/locate the blob.
+                    r = OBSTACLE_RADIUS_PX
+                    circles.append((x, y, r))
+                    cv2.circle(obstacle_mask, (int(x), int(y)), int(r + 6), 1, -1)
 
     return obstacle_mask.astype(bool), circles
 
@@ -311,6 +324,18 @@ def detect_post_obstacles(warped, min_area_px=POST_MIN_AREA_PX):
         cv2.circle(post_mask, (int(round(cx)), int(round(cy))), int(radius + 4), 1, -1)
 
     return post_mask.astype(bool), post_circles
+
+
+def cell_overlaps_circle(row, col, cx, cy, r, cell_px=CELL, pad_px=PAD):
+    """True if a circle (radius r, real physical size) overlaps this cell's
+    square region at all -- used so a 100mm-radius obstacle correctly marks
+    every cell its 200mm-wide body reaches into, not just the one cell its
+    center happens to sit in."""
+    x0, y0 = node(col, row, cell_px, pad_px)
+    x1, y1 = node(col + 1, row + 1, cell_px, pad_px)
+    nearest_x = min(max(cx, x0), x1)
+    nearest_y = min(max(cy, y0), y1)
+    return np.hypot(cx - nearest_x, cy - nearest_y) < r
 
 
 def cell_for_point(x, y, ncells, cell_px=CELL, pad_px=PAD):
@@ -345,7 +370,10 @@ def detect_walls_and_obstacles(warped, ncells, cell_px=CELL, pad_px=PAD):
 
     blocked_cells = set()
     for x, y, r in circles:
-        blocked_cells.add(cell_for_point(x, y, ncells, cell_px, pad_px))
+        for row in range(ncells):
+            for col in range(ncells):
+                if cell_overlaps_circle(row, col, x, y, r, cell_px, pad_px):
+                    blocked_cells.add((row, col))
 
     return h_edges, v_edges, blocked_cells, circles, post_circles
 
@@ -519,32 +547,25 @@ def _seg_seg_dist(p1, p2, p3, p4):
     )
 
 
-def has_line_of_sight(p1, p2, wall_segs, circles, post_circles=None, wall_margin=CLEARANCE_PX, obs_margin=CLEARANCE_PX, post_margin=CLEARANCE_PX):
-    if post_circles is None:
-        post_circles = []
-    
+def has_line_of_sight(p1, p2, wall_segs, circle_keepouts, wall_margin=CLEARANCE_PX):
+    """circle_keepouts: list of (cx, cy, keepout_radius) -- the exact distance
+    the segment must stay from that circle's center. Callers precompute the
+    keepout per circle (normally r + margin) so this function has no opinion
+    on which circles are obstacles vs. posts, or on any per-pair relaxation."""
     # 1. Check heavy clearance against walls
     for w1, w2 in wall_segs:
         if _seg_seg_dist(p1, p2, w1, w2) < wall_margin:
             return False
-            
-    # 2. Check heavy clearance against large dark obstacles
-    for cx, cy, r in circles:
-        if _seg_point_dist(p1, p2, (cx, cy)) < r + obs_margin:
+
+    # 2. Check clearance against every circle (obstacles and posts alike)
+    for cx, cy, keepout in circle_keepouts:
+        if _seg_point_dist(p1, p2, (cx, cy)) < keepout:
             return False
-            
-    # 3. Check clearance against cyan pillars (these are the physical aluminium
-    # posts marking wall endpoints/corners -- the robot can collide with them
-    # exactly like any other wall, so they get the SAME clearance as walls,
-    # not a token 1px margin.
-    for cx, cy, r in post_circles:
-        if _seg_point_dist(p1, p2, (cx, cy)) < r + post_margin:
-            return False
-            
+
     return True
 
 
-def circle_tangent_points(cx, cy, r, margin, n=16, extra=WAYPOINT_EXTRA_PX):
+def circle_tangent_points(cx, cy, r, margin, n=24, extra=WAYPOINT_EXTRA_PX):
     """Points on the inflated boundary of a circular obstacle (radius r + margin).
     Used as extra visibility-graph nodes so the shortest path can hug a
     freestanding obstacle at an angle instead of being confined to the
@@ -561,6 +582,7 @@ def visibility_shortest_path(coarse_cell_path, start_px, goal_px, wall_segs, cir
                               extra_cells=None):
     m = corner_margin_px
     nodes = {"start": start_px, "goal": goal_px}
+    node_owner = {}  # node key -> circle idx it was generated from, if any
     all_cells = set(coarse_cell_path)
     if extra_cells:
         all_cells |= set(extra_cells)
@@ -576,15 +598,33 @@ def visibility_shortest_path(coarse_cell_path, start_px, goal_px, wall_segs, cir
     # bending at cell corners.
     for idx, (cx, cy, r) in enumerate(circles):
         for k, pt in enumerate(circle_tangent_points(cx, cy, r, obs_margin_px)):
-            nodes[("obs", idx, k)] = pt
+            key = ("obs", idx, k)
+            nodes[key] = pt
+            node_owner[key] = idx
+
+    # Base keepout radius for every circle: true radius + full clearance margin.
+    base_keepouts = [(cx, cy, r + obs_margin_px) for (cx, cy, r) in circles]
+    post_keepouts = [(cx, cy, r + CLEARANCE_PX) for (cx, cy, r) in post_circles]
 
     keys = list(nodes.keys())
     adj = {k: [] for k in keys}
-    
-    # Pass post_circles separately into has_line_of_sight
+
     for a, b in itertools.combinations(keys, 2):
         pa, pb = nodes[a], nodes[b]
-        if has_line_of_sight(pa, pb, wall_segs, circles, post_circles):
+        owner_a, owner_b = node_owner.get(a), node_owner.get(b)
+        if owner_a is not None and owner_a == owner_b:
+            # Both endpoints are tangent points of the SAME obstacle circle.
+            # The straight chord between them dips a fraction of a pixel
+            # inside the r+margin inflation ring by construction (polygon
+            # sagitta), which would otherwise make a circle reject its own
+            # boundary points. Relax that one circle to its true physical
+            # radius for this pair -- still guaranteed outside the actual
+            # obstacle -- while every other circle/wall/post keeps full margin.
+            keepouts = [(cx, cy, r if idx == owner_a else r + obs_margin_px)
+                        for idx, (cx, cy, r) in enumerate(circles)]
+        else:
+            keepouts = base_keepouts
+        if has_line_of_sight(pa, pb, wall_segs, keepouts + post_keepouts):
             d = float(np.hypot(pa[0] - pb[0], pa[1] - pb[1]))
             adj[a].append((d, b))
             adj[b].append((d, a))
