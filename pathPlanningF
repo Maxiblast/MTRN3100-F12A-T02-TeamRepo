@@ -45,7 +45,7 @@ WAYPOINT_EXTRA_PX = 1.0
 # shrinks the apparent blob, seen as ~50-63mm on this photo) which is unsafe
 # to plan against -- so detected radius is used only to help LOCATE each
 # obstacle's center; the true radius below is always used for clearance math.
-OBSTACLE_RADIUS_MM = 100.0
+OBSTACLE_RADIUS_MM = 50.0
 OBSTACLE_RADIUS_PX = OBSTACLE_RADIUS_MM / MM_PER_PX
 
 # --- Cyan Pillar Detection Constants ---

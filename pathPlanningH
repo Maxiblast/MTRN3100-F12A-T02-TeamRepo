@@ -433,7 +433,7 @@ def classify_center_region(blocked_cells, ncells, margin=CENTER_REGION_MARGIN_CE
 
 
 def hybrid_bfs_astar(h_edges, v_edges, blocked_cells, start, goal, ncells,
-                      center_cells, avoid_obstacles=False):
+                      center_cells, start_heading=START_HEADING, avoid_obstacles=False):
     """
     Region-aware pathfinder that automatically switches search strategy
     based on where in the grid it currently is:
@@ -453,6 +453,13 @@ def hybrid_bfs_astar(h_edges, v_edges, blocked_cells, start, goal, ncells,
     is turned on/off per-node, so the two modes are stitched together
     seamlessly along one path instead of being run as separate searches.
 
+    The search tracks heading as part of the state (not just the cell) so
+    that it can enforce: while in the WALL region, the robot is only
+    allowed to go straight or take a single 90-degree left/right turn at
+    each cell -- a full 180-degree U-turn in a corridor is never produced.
+    (U-turns are still permitted inside the open CENTER/obstacle region,
+    where they may occasionally be needed to route around a circle.)
+
     Returns (path, mode_used) where mode_used maps each visited cell to
     the string "BFS" or "A*" describing which mode was active there.
     """
@@ -462,40 +469,63 @@ def hybrid_bfs_astar(h_edges, v_edges, blocked_cells, start, goal, ncells,
             return abs(cell[0] - goal[0]) + abs(cell[1] - goal[1])
         return 0
 
+    def turn_diff(from_heading, to_heading):
+        return (TURN_ORDER.index(to_heading) - TURN_ORDER.index(from_heading)) % 4
+
     counter = itertools.count()
-    open_set = [(heuristic(start), 0, next(counter), start)]
-    came_from = {start: None}
-    g_score = {start: 0}
+    start_state = (start, start_heading)
+    open_set = [(heuristic(start), 0, next(counter), start_state)]
+    came_from = {start_state: None}
+    g_score = {start_state: 0}
     mode_used = {start: ("A*" if start in center_cells else "BFS")}
 
+    goal_state = None
     while open_set:
-        _, g, _, cur = heapq.heappop(open_set)
-        if g > g_score.get(cur, float('inf')):
+        _, g, _, cur_state = heapq.heappop(open_set)
+        if g > g_score.get(cur_state, float('inf')):
             continue
-        if cur == goal:
-            path = [goal]
-            while path[-1] != start:
-                path.append(came_from[path[-1]])
-            path.reverse()
-            return path, mode_used
+        cur_cell, cur_heading = cur_state
+        if cur_cell == goal:
+            goal_state = cur_state
+            break
 
-        r, c = cur
+        r, c = cur_cell
         for d, (dr, dc) in DIRS.items():
             if blocked(h_edges, v_edges, blocked_cells, r, c, d, ncells, avoid_obstacles):
                 continue
-            nxt = (r + dr, c + dc)
-            if avoid_obstacles and nxt in blocked_cells:
+            nxt_cell = (r + dr, c + dc)
+            if avoid_obstacles and nxt_cell in blocked_cells:
                 continue
-            tentative_g = g_score[cur] + 1
 
-            if tentative_g < g_score.get(nxt, float('inf')):
-                came_from[nxt] = cur
-                g_score[nxt] = tentative_g
-                mode_used[nxt] = "A*" if nxt in center_cells else "BFS"
-                f_score = tentative_g + heuristic(nxt)
-                heapq.heappush(open_set, (f_score, tentative_g, next(counter), nxt))
+            # Only-90-degree-turns rule: while standing in the WALL
+            # (corridor) region, a 180-degree reversal (diff == 2) is not
+            # a legal move -- only straight (0), right (1) or left (3).
+            # Exception: the very first move from the starting pose may
+            # still pivot freely, since that's the robot orienting itself
+            # before it starts driving, not a mid-corridor U-turn.
+            if (turn_diff(cur_heading, d) == 2 and cur_cell not in center_cells
+                    and cur_state != start_state):
+                continue
 
-    return None, mode_used
+            nxt_state = (nxt_cell, d)
+            tentative_g = g_score[cur_state] + 1
+
+            if tentative_g < g_score.get(nxt_state, float('inf')):
+                came_from[nxt_state] = cur_state
+                g_score[nxt_state] = tentative_g
+                mode_used[nxt_cell] = "A*" if nxt_cell in center_cells else "BFS"
+                f_score = tentative_g + heuristic(nxt_cell)
+                heapq.heappush(open_set, (f_score, tentative_g, next(counter), nxt_state))
+
+    if goal_state is None:
+        return None, mode_used
+
+    state_path = [goal_state]
+    while came_from[state_path[-1]] is not None:
+        state_path.append(came_from[state_path[-1]])
+    state_path.reverse()
+    path = [state[0] for state in state_path]
+    return path, mode_used
 
 
 def describe_mode_switches(path, mode_used):
@@ -745,6 +775,63 @@ def visibility_shortest_path(coarse_cell_path, start_px, goal_px, wall_segs, cir
     return [nodes[k] for k in key_path]
 
 
+def build_free_path(grid_path, mode_used, wall_segs, circles, post_circles, wall_reachable):
+    """
+    Builds the final continuous pixel path by stitching together, run by
+    run, whichever style matches that stretch's search mode:
+
+      - WALL/BFS runs -> strictly grid-aligned: cell-center to cell-center
+        only. Consecutive cells in the grid path always differ in exactly
+        one of row/col, so a straight line between their centers is
+        always purely horizontal or vertical -- i.e. every turn is a
+        clean 90-degree turn, never a diagonal/slanted cut.
+      - CENTER/A* runs -> the clearance-aware any-angle visibility solver,
+        which is allowed to cut diagonally/round corners tightly to
+        route smoothly past the circular obstacles and posts.
+
+    This keeps diagonal shortcuts confined to the open obstacle area
+    where they're actually useful, while the walled corridors always get
+    a pure axis-aligned (90-degree-turn-only) route.
+    """
+    if not grid_path:
+        return None
+
+    runs = []  # list of (mode, start_idx, end_idx), inclusive indices into grid_path
+    start_idx = 0
+    cur_mode = mode_used.get(grid_path[0], "BFS")
+    for idx in range(1, len(grid_path)):
+        m = mode_used.get(grid_path[idx], "BFS")
+        if m != cur_mode:
+            runs.append((cur_mode, start_idx, idx - 1))
+            start_idx = idx
+            cur_mode = m
+    runs.append((cur_mode, start_idx, len(grid_path) - 1))
+
+    free_path = []
+    for mode, i0, i1 in runs:
+        run_cells = grid_path[i0:i1 + 1]
+
+        if mode == "BFS" or len(run_cells) == 1:
+            seg_pts = [node(c + 0.5, r + 0.5) for r, c in run_cells]
+        else:
+            start_px = node(run_cells[0][1] + 0.5, run_cells[0][0] + 0.5)
+            goal_px = node(run_cells[-1][1] + 0.5, run_cells[-1][0] + 0.5)
+            seg_pts = visibility_shortest_path(run_cells, start_px, goal_px,
+                                                wall_segs, circles, post_circles,
+                                                extra_cells=wall_reachable)
+            if seg_pts is None:
+                # Any-angle solver couldn't certify clearance for this run
+                # -- fall back to the safe grid-aligned route for it.
+                seg_pts = [node(c + 0.5, r + 0.5) for r, c in run_cells]
+
+        if free_path and seg_pts and free_path[-1] == seg_pts[0]:
+            free_path.extend(seg_pts[1:])
+        else:
+            free_path.extend(seg_pts)
+
+    return free_path
+
+
 def pixel_path_to_mm(pixel_path, cell_px=CELL, pad_px=PAD, cell_mm=180.0, flip_xy=True):
     pts_mm = [((x - pad_px) / cell_px * cell_mm, (y - pad_px) / cell_px * cell_mm)
               for x, y in pixel_path]
@@ -862,7 +949,8 @@ def main():
           f"are WALL/corridor region (searched with BFS).")
 
     grid_path, mode_used = hybrid_bfs_astar(h_edges, v_edges, blocked_cells,
-                                             effective_start, GOAL_CELL, ncells, center_cells)
+                                             effective_start, GOAL_CELL, ncells, center_cells,
+                                             start_heading=START_HEADING)
     wall_reachable = reachable_cells(h_edges, v_edges, blocked_cells, effective_start, ncells)
 
     if grid_path is None:
@@ -895,7 +983,8 @@ def main():
               "(one that never enters a cell containing an obstacle at all).")
         safe_grid_path, safe_mode_used = hybrid_bfs_astar(h_edges, v_edges, blocked_cells,
                                                             effective_start, GOAL_CELL, ncells,
-                                                            center_cells, avoid_obstacles=True)
+                                                            center_cells, start_heading=START_HEADING,
+                                                            avoid_obstacles=True)
         if safe_grid_path is None:
             obstacle_cells_on_path = [c for c in grid_path if c in blocked_cells]
             print(f"\n[UNSAFE] No route exists from {effective_start} to {GOAL_CELL} that "

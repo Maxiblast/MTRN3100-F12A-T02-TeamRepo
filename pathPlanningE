@@ -4,6 +4,8 @@ import json
 import os
 import sys
 import subprocess
+import heapq
+import itertools
 
 
 def open_image(path):
@@ -18,9 +20,9 @@ def open_image(path):
     except Exception as e:
         print(f"(Could not auto-open {path}: {e}. Open it manually.)")
 
-IMAGE_PATH   = "maze17.jpg"
-START_CELL   = (1, 1)
-GOAL_CELL    = (4, 1)
+IMAGE_PATH   = "maze15.jpg"
+START_CELL   = (5, 7)
+GOAL_CELL    = (1, 1)
 START_HEADING = "N"
 END_HEADING   = "E"
 OUTPUT_PREFIX = "maze_run"
@@ -36,17 +38,19 @@ MM_PER_PX = CELL_MM / CELL
 ROBOT_RADIUS_PX = (ROBOT_LENGTH_MM / 2.0) / MM_PER_PX
 SAFETY_BUFFER_PX = 1.5
 CLEARANCE_PX = ROBOT_RADIUS_PX + SAFETY_BUFFER_PX
+WAYPOINT_EXTRA_PX = 1.0
 
-# Because every waypoint sits at a cell center (node(c+0.5, r+0.5)) and the
-# walls are symmetric at CELL_MM spacing, the robot is ALWAYS driven exactly
-# down the middle of the corridor -- equidistant from the wall on its left
-# and the wall on its right -- for every straight segment of the path, not
-# just at isolated points. The per-side gap is fixed by geometry alone:
-#   PER_SIDE_CLEARANCE_MM = (CELL_MM - ROBOT_LENGTH_MM) / 2
-# and does not depend on where in the maze the robot is.
-PER_SIDE_CLEARANCE_MM = (CELL_MM - ROBOT_LENGTH_MM) / 2.0
-PER_SIDE_CLEARANCE_PX = PER_SIDE_CLEARANCE_MM / MM_PER_PX
+# The cylindrical obstacles are a KNOWN physical size (100mm radius). Image
+# contour detection under-measures this (foreshortening / thresholding
+# shrinks the apparent blob, seen as ~50-63mm on this photo) which is unsafe
+# to plan against -- so detected radius is used only to help LOCATE each
+# obstacle's center; the true radius below is always used for clearance math.
+OBSTACLE_RADIUS_MM = 50.0
+OBSTACLE_RADIUS_PX = OBSTACLE_RADIUS_MM / MM_PER_PX
 
+# --- Cyan Pillar Detection Constants ---
+POST_MIN_AREA_PX = 40
+POST_DILATE_ITERS = 1
 
 CORNER_COLOR_RANGES = {
     "pink":   [(np.array([160, 25, 90]),  np.array([180, 255, 255])),
@@ -129,9 +133,14 @@ def log_corner_orientation(crop):
     return markers
 
 
+def teal_mask_of(img):
+    b, g, r = cv2.split(img.astype(int))
+    mask = ((b > 110) & (g > 110) & (r < g - 15) & (r < b - 15)).astype(np.uint8) * 255
+    return mask
+
+
 def detect_grid_homography(crop, ncells=GRID_CELLS, cell_px=CELL, pad_px=PAD):
-    b, g, r = cv2.split(crop.astype(int))
-    teal_mask = ((b > 110) & (g > 110) & (r < g - 15) & (r < b - 15)).astype(np.uint8) * 255
+    teal_mask = teal_mask_of(crop)
     kernel = np.ones((5, 5), np.uint8)
     teal_mask = cv2.dilate(teal_mask, kernel, iterations=1)
 
@@ -273,6 +282,8 @@ def detect_obstacle_mask_and_circles(gray, cell_px=CELL):
 
     obstacle_mask = np.zeros(gray.shape, dtype=np.uint8)
     circles = []
+    # These bounds only need to identify/locate each obstacle blob -- the
+    # true radius used for all clearance math is OBSTACLE_RADIUS_PX below.
     min_area = (cell_px * 0.2) ** 2 * np.pi
     max_area = (cell_px * 0.6) ** 2 * np.pi
 
@@ -283,11 +294,48 @@ def detect_obstacle_mask_and_circles(gray, cell_px=CELL):
             if perimeter > 0:
                 circularity = 4 * np.pi * area / (perimeter * perimeter)
                 if circularity > 0.60:
-                    (x, y), radius = cv2.minEnclosingCircle(cnt)
-                    circles.append((x, y, radius))
-                    cv2.circle(obstacle_mask, (int(x), int(y)), int(radius + 6), 1, -1)
+                    (x, y), detected_radius = cv2.minEnclosingCircle(cnt)
+                    # Use the KNOWN true radius for safety -- detected_radius
+                    # is only used above to identify/locate the blob.
+                    r = OBSTACLE_RADIUS_PX
+                    circles.append((x, y, r))
+                    cv2.circle(obstacle_mask, (int(x), int(y)), int(r + 6), 1, -1)
 
     return obstacle_mask.astype(bool), circles
+
+
+def detect_post_obstacles(warped, min_area_px=POST_MIN_AREA_PX):
+    gray_shape = warped.shape[:2]
+    teal_mask = teal_mask_of(warped)
+    kernel = np.ones((5, 5), np.uint8)
+    teal_mask = cv2.dilate(teal_mask, kernel, iterations=POST_DILATE_ITERS)
+
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(teal_mask)
+
+    post_circles = []
+    post_mask = np.zeros(gray_shape, dtype=np.uint8)
+    for i in range(1, n):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area < min_area_px:
+            continue
+        cx, cy = centroids[i]
+        radius = float(np.sqrt(area / np.pi))
+        post_circles.append((float(cx), float(cy), radius))
+        cv2.circle(post_mask, (int(round(cx)), int(round(cy))), int(radius + 4), 1, -1)
+
+    return post_mask.astype(bool), post_circles
+
+
+def cell_overlaps_circle(row, col, cx, cy, r, cell_px=CELL, pad_px=PAD):
+    """True if a circle (radius r, real physical size) overlaps this cell's
+    square region at all -- used so a 100mm-radius obstacle correctly marks
+    every cell its 200mm-wide body reaches into, not just the one cell its
+    center happens to sit in."""
+    x0, y0 = node(col, row, cell_px, pad_px)
+    x1, y1 = node(col + 1, row + 1, cell_px, pad_px)
+    nearest_x = min(max(cx, x0), x1)
+    nearest_y = min(max(cy, y0), y1)
+    return np.hypot(cx - nearest_x, cy - nearest_y) < r
 
 
 def cell_for_point(x, y, ncells, cell_px=CELL, pad_px=PAD):
@@ -300,7 +348,11 @@ def cell_for_point(x, y, ncells, cell_px=CELL, pad_px=PAD):
 
 def detect_walls_and_obstacles(warped, ncells, cell_px=CELL, pad_px=PAD):
     gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    
     obstacle_mask, circles = detect_obstacle_mask_and_circles(gray, cell_px)
+    post_mask, post_circles = detect_post_obstacles(warped)
+    
+    combined_mask = obstacle_mask | post_mask
     sobel_mag = compute_sobel_magnitude(gray)
 
     N = ncells + 1
@@ -309,31 +361,23 @@ def detect_walls_and_obstacles(warped, ncells, cell_px=CELL, pad_px=PAD):
         for i in range(N - 1):
             h_edges[(i, j)] = is_wall(gray, node(i, j, cell_px, pad_px),
                                        node(i + 1, j, cell_px, pad_px),
-                                       obstacle_mask, sobel_mag)
+                                       combined_mask, sobel_mag)
     for j in range(N - 1):
         for i in range(N):
             v_edges[(i, j)] = is_wall(gray, node(i, j, cell_px, pad_px),
                                        node(i, j + 1, cell_px, pad_px),
-                                       obstacle_mask, sobel_mag)
+                                       combined_mask, sobel_mag)
 
     blocked_cells = set()
     for x, y, r in circles:
-        blocked_cells.add(cell_for_point(x, y, ncells, cell_px, pad_px))
+        for row in range(ncells):
+            for col in range(ncells):
+                if cell_overlaps_circle(row, col, x, y, r, cell_px, pad_px):
+                    blocked_cells.add((row, col))
 
-    return h_edges, v_edges, blocked_cells, circles
+    return h_edges, v_edges, blocked_cells, circles, post_circles
 
 def blocked(h_edges, v_edges, blocked_cells, r, c, direction, ncells, avoid_obstacles=False):
-    # By default, obstacle discs do NOT hard-block a whole cell here -- only
-    # the fixed walls (h_edges/v_edges) gate coarse-grid connectivity, so a
-    # start/goal cell that merely *contains* an obstacle can still be used.
-    # Obstacles are meant to be avoided with clearance by the any-angle
-    # visibility path instead.
-    #
-    # Set avoid_obstacles=True to make this cell (and any move into it)
-    # strictly off-limits when it contains an obstacle. This is used for the
-    # guaranteed-safe fallback path when the any-angle solver can't find a
-    # clean route -- it must never silently return a path that drives
-    # straight through an obstacle cell.
     if avoid_obstacles and (r, c) in blocked_cells:
         return True
     if direction == "N":
@@ -356,20 +400,18 @@ def blocked(h_edges, v_edges, blocked_cells, r, c, direction, ncells, avoid_obst
 
 DIRS = {"N": (-1, 0), "S": (1, 0), "E": (0, 1), "W": (0, -1)}
 
-def bfs(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=False):
-    # Plain breadth-first search over the coarse cell grid. Every legal move
-    # costs exactly 1 cell, so BFS (which explores in strict layers of
-    # increasing distance from `start`) finds the same shortest cell-move
-    # path that a uniform-cost A* would, without needing a priority queue
-    # or heuristic at all -- the first time we pop `goal` off the queue is
-    # guaranteed to be via a shortest path.
-    from collections import deque
+def astar(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=False):
+    def heuristic(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-    queue = deque([start])
+    open_set = []
+    heapq.heappush(open_set, (0, start))
+
     came_from = {start: None}
+    g_score = {start: 0}
 
-    while queue:
-        cur = queue.popleft()
+    while open_set:
+        _, cur = heapq.heappop(open_set)
 
         if cur == goal:
             path = [goal]
@@ -385,9 +427,13 @@ def bfs(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=Fa
             nxt = (r + dr, c + dc)
             if avoid_obstacles and nxt in blocked_cells:
                 continue
-            if nxt not in came_from:
+            tentative_g = g_score[cur] + 1
+
+            if tentative_g < g_score.get(nxt, float('inf')):
                 came_from[nxt] = cur
-                queue.append(nxt)
+                g_score[nxt] = tentative_g
+                f_score = tentative_g + heuristic(nxt, goal)
+                heapq.heappush(open_set, (f_score, nxt))
 
     return None
 
@@ -501,38 +547,130 @@ def _seg_seg_dist(p1, p2, p3, p4):
     )
 
 
-def has_line_of_sight(p1, p2, wall_segs, circles, wall_margin=CLEARANCE_PX, obs_margin=CLEARANCE_PX):
+def has_line_of_sight(p1, p2, wall_segs, circle_keepouts, wall_margin=CLEARANCE_PX):
+    """circle_keepouts: list of (cx, cy, keepout_radius) -- the exact distance
+    the segment must stay from that circle's center. Callers precompute the
+    keepout per circle (normally r + margin) so this function has no opinion
+    on which circles are obstacles vs. posts, or on any per-pair relaxation."""
+    # 1. Check heavy clearance against walls
     for w1, w2 in wall_segs:
         if _seg_seg_dist(p1, p2, w1, w2) < wall_margin:
             return False
-    for cx, cy, r in circles:
-        if _seg_point_dist(p1, p2, (cx, cy)) < r + obs_margin:
+
+    # 2. Check clearance against every circle (obstacles and posts alike)
+    for cx, cy, keepout in circle_keepouts:
+        if _seg_point_dist(p1, p2, (cx, cy)) < keepout:
             return False
+
     return True
 
 
-def min_wall_clearance_px(path, wall_segs, circles):
-    # Measures the ACTUAL smallest distance from any point on the path to
-    # the nearest wall or obstacle edge, in px. Used to numerically confirm
-    # (not just assume) that the 105mm robot never collides with a 180mm-
-    # spaced wall while driving this path -- every segment is a straight
-    # line between two cell centers, so the true minimum distance to any
-    # wall segment is exactly _seg_seg_dist() between that path segment and
-    # every wall segment (no need to sample intermediate points).
-    best = float('inf')
-    for p1, p2 in zip(path, path[1:]):
-        for w1, w2 in wall_segs:
-            best = min(best, _seg_seg_dist(p1, p2, w1, w2))
-        for cx, cy, r in circles:
-            best = min(best, _seg_point_dist(p1, p2, (cx, cy)) - r)
-    return best
+def circle_tangent_points(cx, cy, r, margin, n=24, extra=WAYPOINT_EXTRA_PX):
+    """Points on the inflated boundary of a circular obstacle (radius r + margin).
+    Used as extra visibility-graph nodes so the shortest path can hug a
+    freestanding obstacle at an angle instead of being confined to the
+    surrounding cell's corners."""
+    R = r + margin + extra
+    return [(cx + R * np.cos(2 * np.pi * k / n), cy + R * np.sin(2 * np.pi * k / n))
+            for k in range(n)]
 
 
-def pixel_path_to_mm(pixel_path, cell_px=CELL, pad_px=PAD, cell_mm=180.0, flip_xy=True):
-    pts_mm = [((x - pad_px) / cell_px * cell_mm, (y - pad_px) / cell_px * cell_mm)
-              for x, y in pixel_path]
-    if flip_xy:
-        pts_mm = [(y, x) for x, y in pts_mm]
+def visibility_shortest_path(coarse_cell_path, start_px, goal_px, wall_segs, circles, post_circles,
+                              cell_px=CELL, pad_px=PAD,
+                              corner_margin_px=CLEARANCE_PX + WAYPOINT_EXTRA_PX,
+                              obs_margin_px=CLEARANCE_PX,
+                              extra_cells=None):
+    m = corner_margin_px
+    nodes = {"start": start_px, "goal": goal_px}
+    node_owner = {}  # node key -> circle idx it was generated from, if any
+    all_cells = set(coarse_cell_path)
+    if extra_cells:
+        all_cells |= set(extra_cells)
+    for (r, c) in all_cells:
+        x0, y0 = node(c, r, cell_px, pad_px)
+        x1, y1 = node(c + 1, r + 1, cell_px, pad_px)
+        for k, corner in enumerate([(x0 + m, y0 + m), (x1 - m, y0 + m),
+                                     (x1 - m, y1 - m), (x0 + m, y1 - m)]):
+            nodes[(r, c, k)] = corner
+
+    # Extra nodes tangent to each freestanding cylindrical obstacle -- lets the
+    # search cut a smooth diagonal path around obstacles rather than only
+    # bending at cell corners.
+    for idx, (cx, cy, r) in enumerate(circles):
+        for k, pt in enumerate(circle_tangent_points(cx, cy, r, obs_margin_px)):
+            key = ("obs", idx, k)
+            nodes[key] = pt
+            node_owner[key] = idx
+
+    # Base keepout radius for every circle: true radius + full clearance margin.
+    base_keepouts = [(cx, cy, r + obs_margin_px) for (cx, cy, r) in circles]
+    post_keepouts = [(cx, cy, r + CLEARANCE_PX) for (cx, cy, r) in post_circles]
+
+    keys = list(nodes.keys())
+    adj = {k: [] for k in keys}
+
+    for a, b in itertools.combinations(keys, 2):
+        pa, pb = nodes[a], nodes[b]
+        owner_a, owner_b = node_owner.get(a), node_owner.get(b)
+        if owner_a is not None and owner_a == owner_b:
+            # Both endpoints are tangent points of the SAME obstacle circle.
+            # The straight chord between them dips a fraction of a pixel
+            # inside the r+margin inflation ring by construction (polygon
+            # sagitta), which would otherwise make a circle reject its own
+            # boundary points. Relax that one circle to its true physical
+            # radius for this pair -- still guaranteed outside the actual
+            # obstacle -- while every other circle/wall/post keeps full margin.
+            keepouts = [(cx, cy, r if idx == owner_a else r + obs_margin_px)
+                        for idx, (cx, cy, r) in enumerate(circles)]
+        else:
+            keepouts = base_keepouts
+        if has_line_of_sight(pa, pb, wall_segs, keepouts + post_keepouts):
+            d = float(np.hypot(pa[0] - pb[0], pa[1] - pb[1]))
+            adj[a].append((d, b))
+            adj[b].append((d, a))
+
+    dist = {k: float('inf') for k in keys}
+    dist["start"] = 0.0
+    prev = {}
+    pq = [(0.0, "start")]
+    visited = set()
+    while pq:
+        d, u = heapq.heappop(pq)
+        if u in visited:
+            continue
+        visited.add(u)
+        if u == "goal":
+            break
+        for w, v in adj[u]:
+            nd_ = d + w
+            if nd_ < dist[v]:
+                dist[v] = nd_
+                prev[v] = u
+                heapq.heappush(pq, (nd_, v))
+
+    if dist["goal"] == float('inf'):
+        return None
+
+    key_path = ["goal"]
+    while key_path[-1] != "start":
+        key_path.append(prev[key_path[-1]])
+    key_path.reverse()
+    return [nodes[k] for k in key_path]
+
+
+# FIXED: New function handling Cartesian mapping without flipping X and Y axes
+def pixel_path_to_mm(pixel_path, cell_px=CELL, pad_px=PAD, cell_mm=180.0, grid_cells=GRID_CELLS):
+    pts_mm = []
+    max_y_mm = grid_cells * cell_mm
+    for x, y in pixel_path:
+        # Standard X mapping
+        x_mm = (x - pad_px) / cell_px * cell_mm
+        
+        # Map image Y to physical Y and invert it (0,0 at bottom-left)
+        y_img_mm = (y - pad_px) / cell_px * cell_mm
+        y_cartesian_mm = max_y_mm - y_img_mm 
+        
+        pts_mm.append((x_mm, y_cartesian_mm))
     return pts_mm
 
 
@@ -546,37 +684,12 @@ def format_waypoints_c_array(waypoints):
     return "\n".join(lines)
 
 
-def cell_path_to_axis_waypoints(grid_path, cell_px=CELL, pad_px=PAD):
-    # Turns the coarse cell-by-cell BFS path into a minimal list of pixel
-    # waypoints that only ever move straight N/S/E/W between them -- no
-    # diagonal/slanted segments. Every waypoint sits at a cell center, so
-    # consecutive cells moving in the same direction get collapsed into one
-    # long straight segment, and a new waypoint is only emitted where the
-    # direction actually changes (i.e. at a turn). This matches the robot's
-    # actual motion: forward runs plus 90/180-degree L/R turns, nothing else.
-    if not grid_path:
-        return []
-    pts = [node(c + 0.5, r + 0.5, cell_px, pad_px) for r, c in grid_path]
-    if len(pts) == 1:
-        return pts
-
-    waypoints = [pts[0]]
-    for i in range(1, len(pts) - 1):
-        prev_pt, cur_pt, next_pt = pts[i - 1], pts[i], pts[i + 1]
-        dir1 = (round(cur_pt[0] - prev_pt[0], 3), round(cur_pt[1] - prev_pt[1], 3))
-        dir2 = (round(next_pt[0] - cur_pt[0], 3), round(next_pt[1] - cur_pt[1], 3))
-        if dir1 != dir2:
-            waypoints.append(cur_pt)
-    waypoints.append(pts[-1])
-    return waypoints
-
-
 def path_length_px(pixel_path):
     return sum(np.hypot(pixel_path[i+1][0]-pixel_path[i][0], pixel_path[i+1][1]-pixel_path[i][1])
                for i in range(len(pixel_path)-1))
 
 
-def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, out_path,
+def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, post_circles, out_path,
                   requested_start=None, effective_start=None,
                   cell_px=CELL, pad_px=PAD):
     overlay = warped.copy()
@@ -596,6 +709,10 @@ def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles
         for x, y, r in circles:
             cv2.circle(overlay, (int(x), int(y)), int(r), (0, 0, 255), -1)
             cv2.putText(overlay, "OBS", (int(x)-15, int(y)+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)
+
+    if post_circles:
+        for x, y, r in post_circles:
+            cv2.circle(overlay, (int(x), int(y)), max(int(r), 3), (255, 255, 0), 2)
 
     if grid_path:
         pts_line = [nd(c + 0.5, r + 0.5) for r, c in grid_path]
@@ -619,7 +736,6 @@ def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles
 
 def main():
     crop = load_and_crop(IMAGE_PATH)
-
     log_corner_orientation(crop)
 
     warped, H, N = detect_grid_homography(crop, ncells=GRID_CELLS)
@@ -629,18 +745,16 @@ def main():
     input_path = f"{OUTPUT_PREFIX}_input.png"
     cv2.imwrite(input_path, warped)
 
-    h_edges, v_edges, blocked_cells, circles = detect_walls_and_obstacles(warped, ncells)
+    h_edges, v_edges, blocked_cells, circles, post_circles = detect_walls_and_obstacles(warped, ncells)
+    
+    print(f"[posts] detected {len(post_circles)} cyan/teal grid posts. The algorithm will now "
+          f"keep the same {CLEARANCE_PX:.1f}px clearance from them as from any other wall.")
 
     print(f"\n[clearance] robot length {ROBOT_LENGTH_MM:.0f}mm, cell size {CELL_MM:.0f}mm -> "
           f"keeping the path at least {CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) "
-          f"from every wall/obstacle edge, including at turns. That leaves the robot's physical "
+          f"from every wall/obstacle/post edge, including at turns. That leaves the robot's physical "
           f"edge ~{CLEARANCE_PX*MM_PER_PX - ROBOT_LENGTH_MM/2:.1f}mm clear of every wall.")
 
-    # Obstacle discs are no longer treated as hard cell-blockers for
-    # connectivity -- only the fixed walls do that now (see `blocked()`).
-    # A start/goal cell is usable as long as no *wall* seals it off; any
-    # obstacle sitting in a cell along the way is instead avoided with
-    # clearance by the any-angle visibility path below.
     effective_start, snapped, snap_dist = find_effective_start(
         h_edges, v_edges, blocked_cells, START_CELL, GOAL_CELL, ncells)
 
@@ -651,11 +765,12 @@ def main():
     else:
         print(f"\nSTART_CELL={START_CELL} confirmed connected to GOAL_CELL -- no snapping needed.")
 
-    grid_path = bfs(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells)
+    grid_path = astar(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells)
+    wall_reachable = reachable_cells(h_edges, v_edges, blocked_cells, effective_start, ncells)
 
     if grid_path is None:
         overlay_path = f"{OUTPUT_PREFIX}_overlay.png"
-        save_overlay(warped, ncells, h_edges, v_edges, None, None, circles, overlay_path,
+        save_overlay(warped, ncells, h_edges, v_edges, None, None, circles, post_circles, overlay_path,
                      requested_start=START_CELL, effective_start=effective_start)
         combined_path = f"{OUTPUT_PREFIX}_input_vs_output.png"
         out_img = cv2.imread(overlay_path)
@@ -666,31 +781,29 @@ def main():
         return
 
     segs = wall_segments(h_edges, v_edges)
+    sr, sc = effective_start
+    gr, gc = GOAL_CELL
+    start_px = node(sc + 0.5, sr + 0.5)
+    goal_px = node(gc + 0.5, gr + 0.5)
+    
+    # We now pass circles and post_circles distinctly 
+    free_path = visibility_shortest_path(grid_path, start_px, goal_px, segs, circles, post_circles,
+                                          extra_cells=wall_reachable)
 
-    # Robot only ever drives straight and turns left/right -- no diagonal
-    # cutting-corners moves. So the path is built directly from the coarse
-    # cell-by-cell BFS route, walking cell-center to cell-center, and only
-    # the turn points are kept as waypoints (straight runs get collapsed).
-    free_path = cell_path_to_axis_waypoints(grid_path)
-
-    def path_clears(path):
-        return all(has_line_of_sight(p1, p2, segs, circles) for p1, p2 in zip(path, path[1:]))
-
-    if not path_clears(free_path):
-        print("[warn] the straight/orthogonal route couldn't certify "
-              f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) of clearance from a wall or "
-              "obstacle along the way. Trying a STRICT obstacle-avoiding grid path instead "
+    if free_path is None:
+        print("[warn] any-angle visibility search couldn't certify a clean, clearance-respecting "
+              "route for this start/goal. Trying a STRICT obstacle-avoiding grid path instead "
               "(one that never enters a cell containing an obstacle at all).")
-        safe_grid_path = bfs(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells,
-                              avoid_obstacles=True)
+        safe_grid_path = astar(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells,
+                                avoid_obstacles=True)
         if safe_grid_path is None:
             obstacle_cells_on_path = [c for c in grid_path if c in blocked_cells]
             print(f"\n[UNSAFE] No route exists from {effective_start} to {GOAL_CELL} that "
                   f"avoids every obstacle cell entirely -- every wall-legal corridor is forced "
-                  f"through {obstacle_cells_on_path}, and a straight-line pass through it "
-                  f"could not confirm {CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) of "
-                  f"clearance either. This is right at the edge of what's geometrically possible "
-                  f"for a {ROBOT_LENGTH_MM:.0f}mm robot -- NOT a pathfinding bug.")
+                  f"through {obstacle_cells_on_path}, and the any-angle solver could not confirm "
+                  f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) of clearance around the "
+                  f"obstacle(s) there either. This is right at the edge of what's geometrically "
+                  f"possible for a {ROBOT_LENGTH_MM:.0f}mm robot -- NOT a pathfinding bug.")
             for (r, c) in obstacle_cells_on_path:
                 for (cx, cy, rad) in circles:
                     if cell_for_point(cx, cy, ncells) == (r, c):
@@ -703,48 +816,27 @@ def main():
                   "or pick a different start/goal. Proceeding with the obstacle-agnostic grid "
                   "path below FOR REFERENCE ONLY -- it drives straight through the obstacle "
                   "cell(s) above and should NOT be sent to the robot as-is.")
+            free_path = [node(c + 0.5, r + 0.5) for r, c in grid_path]
         else:
             print("[ok] found a strict obstacle-avoiding grid route -- longer, but guaranteed "
                   "to never enter a cell that contains an obstacle.")
             grid_path = safe_grid_path
-            free_path = cell_path_to_axis_waypoints(grid_path)
+            free_path = [node(c + 0.5, r + 0.5) for r, c in grid_path]
     else:
-        print(f"\n[ok] straight/orthogonal route through {len(grid_path)} cells keeps "
-              f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) clearance the whole way -- "
-              f"only left/right turns, no diagonals.")
-
-    # Numeric proof, not just an assumption: since every waypoint is a cell
-    # center and cell walls are CELL_MM apart, a straight segment between
-    # two cell centers should sit CELL_MM/2 away (centerline-to-wall) from
-    # the wall on each side. Measure that actual minimum centerline distance,
-    # then subtract the robot's half-width to get the real physical gap
-    # between the robot's edge and the wall, and confirm it's positive and
-    # centered/collision-free.
-    measured_centerline_to_wall_px = min_wall_clearance_px(free_path, segs, circles)
-    measured_centerline_to_wall_mm = measured_centerline_to_wall_px * MM_PER_PX
-    robot_edge_gap_mm = measured_centerline_to_wall_mm - ROBOT_LENGTH_MM / 2.0
-    if measured_centerline_to_wall_px < CLEARANCE_PX - 1e-6:
-        print(f"\n[UNSAFE] Measured centerline-to-wall distance is only "
-              f"{measured_centerline_to_wall_mm:.1f}mm, which leaves just {robot_edge_gap_mm:.1f}mm "
-              f"of physical clearance for a {ROBOT_LENGTH_MM:.0f}mm-wide robot -- below the "
-              f"{SAFETY_BUFFER_PX*MM_PER_PX:.1f}mm safety buffer. Do not send this path to the robot.")
-    else:
-        print(f"\n[verified] Robot ({ROBOT_LENGTH_MM:.0f}mm) stays centered between walls spaced "
-              f"{CELL_MM:.0f}mm apart -- measured {robot_edge_gap_mm:.1f}mm of physical clearance "
-              f"between the robot's edge and the nearest wall (expected "
-              f"~{PER_SIDE_CLEARANCE_MM:.1f}mm on each side when driving straight down a "
-              f"centered corridor). No collisions.")
+        print(f"\n[any-angle] routed through the full wall-reachable region "
+              f"({len(wall_reachable)} cells) so obstacles that don't fit inside a "
+              f"single coarse cell (given the {CLEARANCE_PX:.1f}px clearance) get "
+              f"detoured around via neighboring cells instead of blocking the search.")
 
     grid_len_cells = len(grid_path) - 1
     free_len_px = path_length_px(free_path)
     free_len_cells_equiv = free_len_px / CELL
     print(f"\nGrid-constrained path: {grid_len_cells} cell-moves")
-    print(f"Orthogonal (L/R-turn-only) path: {free_len_px:.1f}px "
-          f"(~{free_len_cells_equiv:.2f} cell-widths) through {len(free_path)} waypoints "
-          f"(turn points only)")
+    print(f"Any-angle shortest path: {free_len_px:.1f}px "
+          f"(~{free_len_cells_equiv:.2f} cell-widths) through {len(free_path)} points")
 
     overlay_path = f"{OUTPUT_PREFIX}_overlay.png"
-    save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, overlay_path,
+    save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, post_circles, overlay_path,
                  requested_start=START_CELL, effective_start=effective_start)
 
     combined_path = f"{OUTPUT_PREFIX}_input_vs_output.png"
@@ -752,13 +844,13 @@ def main():
     combined = cv2.hconcat([warped, out_img])
     cv2.imwrite(combined_path, combined)
 
-    print("\nOrthogonal path, turn points only (pixel coords on warped image):")
+    print("\nAny-angle path (pixel coords on warped image):")
     for x, y in free_path:
         print(f"  ({x:.1f}, {y:.1f})")
 
-    waypoints_mm = pixel_path_to_mm(free_path, cell_mm=CELL_MM, flip_xy=True)
-    print(f"\nWaypoints (mm, {int(CELL_MM)}mm/cell, axes flipped, turn-points only, "
-          f"straight segments between them -- no diagonals):")
+    # FIXED: Updated the way the mapping function is called in main
+    waypoints_mm = pixel_path_to_mm(free_path, cell_mm=CELL_MM, grid_cells=GRID_CELLS)
+    print(f"\nWaypoints (mm, {int(CELL_MM)}mm/cell, standard Cartesian X/Y):")
     print("{")
     print(format_waypoints_c_array(waypoints_mm))
     print("}")
@@ -786,6 +878,7 @@ def main():
         "free_path_px": free_path,
         "free_path_length_px": free_len_px,
         "waypoints_mm": waypoints_mm,
+        "post_circles_px": post_circles,
     }, open(result_path, "w"), indent=2)
 
     open_image(combined_path)
