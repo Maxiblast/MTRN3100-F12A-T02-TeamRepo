@@ -99,7 +99,7 @@ const float WEST_DEG = 270.0;
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
 const Waypoint startPoint = { 2 * WALL_LENGTH, 0 * WALL_LENGTH};
 float startHeading = SOUTH_RAD;
-const Waypoint goalPoint = {5 * WALL_LENGTH, 1 * WALL_LENGTH};   //5,1 //8,4
+const Waypoint goalPoint = {8 * WALL_LENGTH, 4 * WALL_LENGTH};
 // float goalHeading = SOUTH_RAD; //not implementated yet;
 
 void setup() {
@@ -135,21 +135,6 @@ void setup() {
   // oled.print("PEEKABOO");
 
   search(startPoint, goalPoint);
-
-  search(goalPoint, startPoint);
-
-  path.clear();
-
-  floodfillAppend(path, 0, goalPoint);
-
-  Waypoint finalPath[path.size()];
-  for (int i{0}; i < path.size(); i++) {
-    finalPath[i] = path[i];
-  }
-
-  purePursuitPath(finalPath, path.size(),0.0);
-
-
 
 
     //this works but search doesnt
