@@ -22,7 +22,7 @@ def open_image(path):
 
 IMAGE_PATH   = "maze15.jpg"
 START_CELL   = (1, 1)
-GOAL_CELL    = (7, 1)
+GOAL_CELL    = (1, 7)
 START_HEADING = "N"
 END_HEADING   = "E"
 OUTPUT_PREFIX = "maze_run"

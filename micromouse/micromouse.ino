@@ -60,20 +60,43 @@ void setup() {
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
-    {270, 270},
-    {630, 270},
-    {630, 90},
-    {1170, 90},
+     {270, 1350},
+    {270, 1170},
+    {270, 990},
+    {90, 990},
+    {90, 810},
+    {90, 630},
+    {90, 450},
+    {270, 450},
+    {270, 630},
+    {450, 630},
+    {450, 810},
+    {450, 990},
+    {450, 1170},
+    {450, 1350},
+    {630, 1350},
+    {810, 1350},
+    {990, 1350},
+    {1170, 1350},
+    {1350, 1350},
+    {1350, 1170},
+    {1530, 1170},
+    {1530, 990},
+    {1350, 990},
+    {1350, 810},
+    {1350, 630},
+    {1530, 630},
+    {1530, 450},
+    {1350, 450},
+    {1350, 270},
     {1170, 270},
     {990, 270},
-    {990, 450},
-    {270, 450},
-    {270, 1350},
-    {450, 1350},
-    {450, 1530},
-    {630, 1530},
-    {630, 1350},
-    {990, 1350}
+    {990, 90},
+    {810, 90},
+    {630, 90},
+    {450, 90},
+    {450, 270},
+    {270, 270}
   };
 
   int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
@@ -125,6 +148,9 @@ void driveForward(float distance) {
   float target = distance / WHEEL_RADIUS;
   controller.zeroAndSetTarget(0, target);
 
+  updateOdometry();
+  float target_heading = encoder_odometry.getH();
+
   while (true) {
     float leftRot = encoder1.getRotation() - startLeft;
     float rightRot = encoder2.getRotation() - startRight;
@@ -135,8 +161,14 @@ void driveForward(float distance) {
 
     int pwm = controller.compute(avgRot);
 
-    motor1.setPWM(-pwm);
-    motor2.setPWM(pwm);
+    float heading_error = encoder_odometry.getH() - target_heading;
+    const float HEADING_KP = 200.0; // <--- TUNE THIS CHARCHIT (Try 50, 100, 200) and see which one works better for straight line
+    int correction = constrain((int)(HEADING_KP * heading_error), -40, 40);
+    int left_pwm  = pwm + correction;
+    int right_pwm = pwm - correction;
+
+    motor1.setPWM(-left_pwm);
+    motor2.setPWM(right_pwm);
 
     if (abs(controller.error) < 0.1) {
       motor1.setPWM(0);

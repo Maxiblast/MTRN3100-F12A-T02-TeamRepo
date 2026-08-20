@@ -19,8 +19,8 @@ def open_image(path):
         print(f"(Could not auto-open {path}: {e}. Open it manually.)")
 
 IMAGE_PATH   = "maze17.jpg"
-START_CELL   = (5, 7)
-GOAL_CELL    = (1, 7)
+START_CELL   = (7, 1)
+GOAL_CELL    = (1, 1)
 START_HEADING = "N"
 END_HEADING   = "E"
 OUTPUT_PREFIX = "maze_run"
