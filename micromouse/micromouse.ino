@@ -39,10 +39,9 @@ const uint8_t LIDAR_ENABLE_PINS[3] = {A2, A1, A0};
 const uint8_t LIDAR_ADDRESSES[3] = {0x30, 0x31, 0x32};
 
 // Change these numbers if your physical LiDAR plugs are different.
-// This assumes J14 = left, J15 = front, J16 = right.
-const int LEFT_LIDAR = 0;
-const int FRONT_LIDAR = 1;
-const int RIGHT_LIDAR = 2;
+const int LEFT_LIDAR = 2;
+const int FRONT_LIDAR = 0;
+const int RIGHT_LIDAR = 1;
 
 // ======================================================
 //              LIDAR ODOM RESET TUNING
@@ -84,6 +83,7 @@ void setup() {
 #define START_HEADING_DEG -180.0
 
 void loop() {
+<<<<<<< HEAD
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
     {810, 450},
@@ -93,27 +93,40 @@ void loop() {
     {303, 1203},
     {270, 1350}
   };
+=======
+   //Waypoints are already given in the maze's global frame, use as-is
+  //   Waypoint path[] = {
+  //    {0, 0},
+  //     {720, 0},
+  //     {720, -180},
+  //     {900, -180}
+  //  };
+>>>>>>> 4331fe9 (fixed centering)
 
-  int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-  int final_heading_deg = 90.0;
+    // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
+    // int final_heading_deg = 90.0;
 
+<<<<<<< HEAD
   encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
   //resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
+=======
+    // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
+    // resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
+>>>>>>> 4331fe9 (fixed centering)
 
-  // Face perpendicular to whichever wall is currently closest.
-  centerToNearestWall();
+   
+   centerToNearestWall();
+   //Robot is stationary. Correct its position around the known starting-cell
+   //centre while keeping the path in global coordinates.
+  //   resetOdometryFromLidar(
+  //     path[0].x,
+  //     path[0].y,
+  //     START_HEADING_DEG
+  //   );
 
-  // Robot is stationary. Correct its position around the known starting-cell
-  // centre while keeping the path in global coordinates.
-  resetOdometryFromLidar(
-    path[0].x,
-    path[0].y,
-    START_HEADING_DEG
-  );
+  //   purePursuitPath(path, numberOfWaypoints, final_heading_deg);
 
-  purePursuitPath(path, numberOfWaypoints, final_heading_deg);
-
-  while (true) {};
+   while (true) {};
 }
 
 float imuHeadingOffsetRad = -180;
@@ -283,10 +296,10 @@ bool resetOdometryFromLidar(
 }
 
 float wallCenteringCurvature(float pathCurvature, float headingErrorDeg) {
-  const float TARGET_SIDE_DISTANCE_MM = 50.0; // (180 mm cell - 80 mm robot) / 2
+  const float TARGET_SIDE_DISTANCE_MM = 55.0; // (180 mm cell - 80 mm robot) / 2
   const float WALL_PRESENT_MAX_MM = 105.0;    // larger means that side is an opening
   const float WALL_KP = 0.00040;              // curvature correction per mm
-  const float MAX_WALL_CURVATURE = 0.0060;    // prevents aggressive steering
+  const float MAX_WALL_CURVATURE = 0.0040;    // prevents aggressive steering
   const float ERROR_DEADBAND_MM = 2.0;
 
   // Do not wall-follow while pure pursuit is trying to turn.
@@ -356,17 +369,19 @@ void setCenteringTurn(int direction, int pwm) {
   motor2.setPWM(direction * pwm);
 }
 
-bool centerToNearestWall() {
-  const int TURN_PWM = 42;
+bool centerToNearestWall() { //will use lidar to scan the local minimum saves said heading then returns to that heading (minimum means the robot parallel to wall) 
+  const int TURN_PWM = 30;
   const float NOISE_MM = 2.0;
-  const int REQUIRED_RISES = 3;
+  const int REQUIRED_RISES = 1;
   const unsigned long MAX_TURN_TIME_MS = 7000;
 
-  // First choose the LiDAR that can currently see the closest valid wall.
+  // Find the LiDAR currently detecting the closest wall.
   int closestSensor = -1;
   float closestDistance = 9999.0;
+
   for (int i = 0; i < 3; i++) {
     float distance = filteredLidarReading(i);
+
     Serial.print("LiDAR ");
     Serial.print(i);
     Serial.print(" = ");
@@ -378,27 +393,42 @@ bool centerToNearestWall() {
     }
   }
 
+  // Prevent accessing lidar[-1] if every reading failed.
   if (closestSensor < 0 || closestDistance >= 9999.0) {
-    Serial.println("No valid wall found - centering skipped");
+    motor1.setPWM(0);
+    motor2.setPWM(0);
+
+    Serial.println("No valid LiDAR found");
     return false;
   }
 
   Serial.print("Centering with LiDAR ");
   Serial.println(closestSensor);
 
+  updateOdometry();
+
   int direction = 1;
   bool directionWasSwitched = false;
   bool distanceHasDecreased = false;
+
   int initialRises = 0;
   int risesAfterMinimum = 0;
+
   float previous = closestDistance;
   float minimumDistance = closestDistance;
+
+  // Remember the heading corresponding to the minimum distance.
+  float bestHeadingDeg =
+    encoder_odometry.getH() * 180.0 / PI;
+
   unsigned long startTime = millis();
 
   setCenteringTurn(direction, TURN_PWM);
 
   while (millis() - startTime < MAX_TURN_TIME_MS) {
-    float current = filteredLidarReading(closestSensor);
+    float current =
+      filteredLidarReading(closestSensor);
+
     updateOdometry();
 
     if (current >= 9999.0) {
@@ -406,38 +436,82 @@ bool centerToNearestWall() {
       continue;
     }
 
-    Serial.print("Center distance = ");
-    Serial.println(current);
+    float currentHeadingDeg =
+      encoder_odometry.getH() * 180.0 / PI;
+
+    Serial.print("Distance = ");
+    Serial.print(current);
+
+    Serial.print("\tHeading = ");
+    Serial.println(currentHeadingDeg);
 
     if (current < minimumDistance - NOISE_MM) {
       minimumDistance = current;
+      bestHeadingDeg = currentHeadingDeg;
+
       distanceHasDecreased = true;
       risesAfterMinimum = 0;
-    }
 
+      Serial.print("New minimum at heading ");
+      Serial.println(bestHeadingDeg);
+    }
     if (!distanceHasDecreased) {
-      // If the first chosen direction immediately moves away from the wall,
-      // reverse once and continue searching for the minimum.
-      if (current > previous + NOISE_MM) initialRises++;
-      else initialRises = 0;
+      if (current > previous + NOISE_MM) {
+        initialRises++;
+      } else {
+        initialRises = 0;
+      }
 
       if (initialRises >= 2 && !directionWasSwitched) {
+        motor1.setPWM(0);
+        motor2.setPWM(0);
+        delay(50);
+
         direction = -direction;
         directionWasSwitched = true;
         initialRises = 0;
+
         setCenteringTurn(direction, TURN_PWM);
-        delay(80);  // allow the drivetrain to change direction
+
+        Serial.println("Initial direction wrong - reversing");
       }
-    } else {
-      // A few consecutive readings above the best value mean we have passed
-      // the perpendicular point. Requiring three rejects single noisy samples.
-      if (current > minimumDistance + NOISE_MM) risesAfterMinimum++;
-      else risesAfterMinimum = 0;
+    }
+
+    /*
+     * Once a minimum has been found, an increasing reading
+     * means the robot has passed the perpendicular heading.
+     */
+    else {
+      if (current > minimumDistance + NOISE_MM) {
+        risesAfterMinimum++;
+      } else {
+        risesAfterMinimum = 0;
+      }
 
       if (risesAfterMinimum >= REQUIRED_RISES) {
         motor1.setPWM(0);
         motor2.setPWM(0);
+
+        delay(100);
         updateOdometry();
+
+        Serial.print("Minimum distance: ");
+        Serial.println(minimumDistance);
+
+        Serial.print("Returning to best heading: ");
+        Serial.println(bestHeadingDeg);
+
+        /*
+         * Return to the heading where the minimum
+         * LiDAR distance was measured.
+         */
+        turnToHeading(bestHeadingDeg);
+
+        motor1.setPWM(0);
+        motor2.setPWM(0);
+
+        updateOdometry();
+
         Serial.println("Wall centred");
         return true;
       }
@@ -449,6 +523,7 @@ bool centerToNearestWall() {
 
   motor1.setPWM(0);
   motor2.setPWM(0);
+
   Serial.println("Centering timed out");
   return false;
 }
@@ -642,7 +717,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float seg_len = sqrt(seg_dx * seg_dx + seg_dy * seg_dy);
 
     // if heading change is too big for curvature to react to (e.g. <90)
-    const float TURN_THRESHOLD_DEG = 100.0;
+    const float TURN_THRESHOLD_DEG = 90;
     float seg_heading_deg = atan2(seg_dy, seg_dx) * 180.0 / PI;
     float current_heading_deg = rh * 180.0 / PI;
     float heading_gap = seg_heading_deg - current_heading_deg;
