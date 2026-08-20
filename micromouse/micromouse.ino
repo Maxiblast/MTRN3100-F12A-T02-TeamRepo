@@ -10,6 +10,7 @@
 #include "EncoderOdometry.hpp"
 #include "Motor.hpp"
 #include "PIDController.hpp"
+#include "VelocityController.hpp"
 #include "waypoint.hpp"
 //Motors
 #define MOT1PWM 11
@@ -48,7 +49,10 @@ SSD1306AsciiWire oled;
 
 // Change only these two numbers if your physical left/right plugs are swapped.
 // This assumes J14 = left, J15 = front, J16 = right.
+
+//use trysthans const int's instead of the enum from diff branch
 const int LEFT_LIDAR = 0;
+const int FRONT_LIDAR = 1;
 const int RIGHT_LIDAR = 2;
 
 //Constants
@@ -78,68 +82,75 @@ const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm.
 const Waypoint startPoint = { 0 * WALL_LENGTH, 3 * WALL_LENGTH};
 const Waypoint goalPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
 
-struct Waypoint {
-  float x, y;
-};
+  void setup() {
+    delay(1000);
+    Serial.begin(115200);
+    Wire.begin();
+    Wire.setClock(400000L);
+    oled.begin(&Adafruit128x64, DISPLAY_ADDRESS);
+    oled.setScrollMode(SCROLL_MODE_AUTO);
+    oled.setFont(newbasic3x5);
+    oled.clear();
 
-void setup() {
-  delay(1000);
-  Serial.begin(115200);
-  Wire.begin();
-  Wire.setClock(400000L);
-  oled.begin(&Adafruit128x64, DISPLAY_ADDRESS);
-  oled.setScrollMode(SCROLL_MODE_AUTO);
-  oled.setFont(newbasic3x5);
-  oled.clear();
+    setupLidars();
+    mpu.begin();
+    Serial.println(F("Calibrating IMU, keep still..."));
+    delay(1000);
+    mpu.calcOffsets();
+    Serial.println("Done");
+    delay(2000);
+    
+    path.push_back(startPoint);
+    // printPath(path);
+    floodfillAppend(path, 0, goalPoint);
+    // printPath(path);
+    Waypoint finalPath[path.size()];
+    for (int i{0}; i < path.size(); i++) {
+        finalPath[i] = path[i];
+    }
 
-  setupLidars();
-  mpu.begin();
-  Serial.println(F("Calibrating IMU, keep still..."));
-  delay(1000);
-  mpu.calcOffsets();
-  Serial.println("Done");
-  delay(2000);
-}
+    purePursuitPath(finalPath, path.size(),0.0);
+  }
 
 // set to the actual provided starting orientation before each maze
 #define START_HEADING_DEG 0.0
 
 void loop() {
-  // Waypoints are already given in the maze's global frame, use as-is
-  Waypoint path[] = {
-    {1350, 990},
-    {1530, 990},
-    {1530, 450},
-    {1350, 450},
-    {1350, 810},
-    {1170, 810},
-    {1170, 630},
-    {990, 630},
-    {990, 990},
-    {1170, 990},
-    {1170, 1170},
-    {630, 1170},
-    {630, 450},
-    {990, 450},
-    {990, 270},
-    {1170, 270},
-    {1170, 90},
-    {450, 90},
-    {450, 270}
-  };
+  // // Waypoints are already given in the maze's global frame, use as-is
+  // Waypoint path[] = {
+  //   {1350, 990},
+  //   {1530, 990},
+  //   {1530, 450},
+  //   {1350, 450},
+  //   {1350, 810},
+  //   {1170, 810},
+  //   {1170, 630},
+  //   {990, 630},
+  //   {990, 990},
+  //   {1170, 990},
+  //   {1170, 1170},
+  //   {630, 1170},
+  //   {630, 450},
+  //   {990, 450},
+  //   {990, 270},
+  //   {1170, 270},
+  //   {1170, 90},
+  //   {450, 90},
+  //   {450, 270}
+  // };
 
-  int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-  int final_heading_deg = 90.0;
+  // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
+  // int final_heading_deg = 90.0;
 
-  encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
-  resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
+  // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
+  // resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
 
-  // Face perpendicular to whichever wall is currently closest.
-  centerToNearestWall();
+  // // Face perpendicular to whichever wall is currently closest.
+  // centerToNearestWall();
 
-  purePursuitPath(path, numberOfWaypoints, final_heading_deg);
+  // purePursuitPath(path, numberOfWaypoints, final_heading_deg);
 
-  while (true) {};
+  // while (true) {};
 }
 
 float imuHeadingOffsetRad = 0;
@@ -158,11 +169,7 @@ void setupLidars() {
     delay(10);
 
     lidar[i].setTimeout(80);
-    if (!lidar[i].init()) {
-      Serial.print("LiDAR failed on J");
-      Serial.println(14 + i);
-      continue;
-    }
+    lidar[i].init();
 
     lidar[i].configureDefault();
     lidar[i].setAddress(LIDAR_ADDRESSES[i]);
@@ -507,6 +514,9 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
   const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
+  int prevTime = millis();
+  int currTime;
+
   int current_segment = 0;  // which segment we're tracking
   leftVelocityController.reset(encoder1.getRotation());
   rightVelocityController.reset(encoder2.getRotation());
@@ -517,6 +527,14 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float rx = encoder_odometry.getX();
     float ry = encoder_odometry.getY();
     float rh = encoder_odometry.getH();
+
+
+    //prints odom ever 2 seconds.
+    currTime = millis();
+    if (currTime - prevTime > 2000) {
+      printStats();
+      prevTime = currTime;
+    }
 
     // final goal is the last waypoint
     float final_x = waypoints[num_waypoints - 1].x;
@@ -880,9 +898,9 @@ void updateCellFromHeading(Waypoint robot_pos, float heading_rad) {
 }
 
 void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
-    uint16_t frontDist = readFilteredLidar(LIDAR_FRONT);
-    uint16_t leftDist = readFilteredLidar(LIDAR_LEFT);
-    uint16_t rightDist = readFilteredLidar(LIDAR_RIGHT);
+    uint16_t frontDist = filteredLidarReading(FRONT_LIDAR);
+    uint16_t leftDist  = filteredLidarReading(LEFT_LIDAR);
+    uint16_t rightDist = filteredLidarReading(RIGHT_LIDAR);
     if (frontDist < WALL_THRESHOLD) {
       updateCellFromHeading(robot_pos, heading_rad);
     }
@@ -959,4 +977,8 @@ void printStats() {
     // oled.print();
     // oled.println();
     // oled.set1X();
+}
+
+inline int coordToGrid(float val) {
+    return static_cast<int>(val / WALL_LENGTH + 0.5f);
 }
