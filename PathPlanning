@@ -19,8 +19,8 @@ def open_image(path):
     except Exception as e:
         print(f"(Could not auto-open {path}: {e}. Open it manually.)")
 
-IMAGE_PATH   = "maze14.jpg"
-START_CELL   = (7, 5)
+IMAGE_PATH   = "newmaze.jpg"
+START_CELL   = (2, 6)
 GOAL_CELL    = (2, 1)
 START_HEADING = "N"
 END_HEADING   = "E"
