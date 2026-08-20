@@ -903,6 +903,7 @@ bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, int range) {
 void search(const Waypoint& begin, const Waypoint endPoint) {
   Waypoint currPoint = begin;
   while(!isAtTarget(currPoint, endPoint, FF_GOAL_TOLERANCE)) {
+    centerToNearestWall();
     updateMazeUsingLidar(currPoint, encoder_odometry.getH());
     printToOLED(currPoint);
     // printStats();
