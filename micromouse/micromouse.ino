@@ -55,30 +55,18 @@ void setup() {
 }
 
 // set to the actual provided starting orientation before each maze
-#define START_HEADING_DEG 0.0
+#define START_HEADING_DEG -180.0
 
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
-    {1350, 990},
-    {1530, 990},
-    {1530, 450},
-    {1350, 450},
-    {1350, 810},
-    {1170, 810},
-    {1170, 630},
-    {990, 630},
-    {990, 990},
-    {1170, 990},
-    {1170, 1170},
-    {630, 1170},
-    {630, 450},
-    {990, 450},
-    {990, 270},
-    {1170, 270},
-    {1170, 90},
-    {450, 90},
-    {450, 270}
+    {1170, 450},
+    {843, 483},
+    {663, 597},
+    {597, 777},
+    {483, 957},
+    {237, 1317},
+    {90, 1350}
   };
 
   int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
@@ -91,7 +79,7 @@ void loop() {
   while (true) {};
 }
 
-float imuHeadingOffsetRad = 0;
+float imuHeadingOffsetRad = -180;
 
 void updateOdometry() {
   mpu.update();
