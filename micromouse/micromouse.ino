@@ -121,9 +121,11 @@ void setup() {
   //   delay(1000);
   // oled.print("PEEKABOO");
 
-  search(startPoint, goalPoint);
+  int visited = 0;
 
-  search(goalPoint, startPoint);
+  search(startPoint, goalPoint, visited);
+
+  search(goalPoint, startPoint, visited);
 
   path.clear();
 
@@ -900,11 +902,14 @@ bool isAtTarget(Waypoint curr_pos, Waypoint target_pos, int range) {
     // navigateTo(currPoint.x, currPoint.y, SOUTH_DEG);
 
 
-void search(const Waypoint& begin, const Waypoint endPoint) {
+void search(const Waypoint& begin, const Waypoint endPoint, int& visited) {
   Waypoint currPoint = begin;
   while(!isAtTarget(currPoint, endPoint, FF_GOAL_TOLERANCE)) {
     updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-    printToOLED(currPoint);
+    visited++;
+    printToOLED(currPoint, visited);
+    Serial.print("ITS HEREEEEEE");
+    Serial.println(visited);
     // printStats();
     Waypoint nextPoint = floodfillNext(path, endPoint);
     // printPointOLED(nextPoint);
@@ -913,7 +918,7 @@ void search(const Waypoint& begin, const Waypoint endPoint) {
     currPoint = nextPoint;
   }
   updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-  printToOLED(currPoint);
+  printToOLED(currPoint, visited);
 }
 
 //should just make a new floodfill but I dont want to cause that already works. i think.
@@ -1084,8 +1089,9 @@ void updateMazeUsingLidar(Waypoint robot_pos, float heading_rad) {
 
 
 //Gen Ai used to bugfix
-void printToOLED(const Waypoint& robotPos) {
+void printToOLED(const Waypoint& robotPos, int visited) {
     oled.clear();
+    float result = float(visited) / (MAZE_SIZE * MAZE_SIZE) * 100.0f;
     int initRow = (robotPos.x >= 6) ? 2 : 0; // Start at row 2 if robot is further down
 
     // Print top row
@@ -1095,7 +1101,6 @@ void printToOLED(const Waypoint& robotPos) {
             bool horiPresent = (MAZE_HORIZONTAL_WALLS[c] & (1 << 0));
             oled.print(horiPresent ? "_" : " ");
         }
-        oled.print("%");
         oled.println();
     }
 
@@ -1111,7 +1116,9 @@ void printToOLED(const Waypoint& robotPos) {
             oled.print(horiPresent ? "_" : " ");
         }
         if (!statsPrinted) {
-            oled.print("   %");
+            oled.print(F("  "));
+            oled.print(result, 1);
+            oled.print(F("%"));
             statsPrinted = true;
         }
         oled.println();
