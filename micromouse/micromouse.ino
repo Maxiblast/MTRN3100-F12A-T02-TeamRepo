@@ -46,14 +46,11 @@ const int RIGHT_LIDAR = 2;
 
 // ======================================================
 //              LIDAR ODOM RESET TUNING
-// ======================================================
-// Put the robot exactly in the centre of one 180 mm cell and record the
-// actual readings. Use those readings here; they may not be exactly 50 mm.
-const float RESET_LEFT_CENTRED_MM = 50.0;
+
+const float RESET_LEFT_CENTRED_MM = 50.0; //fix this measure tmr
 const float RESET_FRONT_CENTRED_MM = 50.0;
 const float RESET_RIGHT_CENTRED_MM = 50.0;
 
-// Anything farther than this is considered an opening, not an adjacent wall.
 const float RESET_WALL_PRESENT_MAX_MM = 105.0;
 
 // Reject a LiDAR correction larger than this.
