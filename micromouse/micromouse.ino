@@ -83,7 +83,6 @@ void setup() {
 #define START_HEADING_DEG -180.0
 
 void loop() {
-<<<<<<< HEAD
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
     {810, 450},
@@ -93,38 +92,24 @@ void loop() {
     {303, 1203},
     {270, 1350}
   };
-=======
-   //Waypoints are already given in the maze's global frame, use as-is
-  //   Waypoint path[] = {
-  //    {0, 0},
-  //     {720, 0},
-  //     {720, -180},
-  //     {900, -180}
-  //  };
->>>>>>> 4331fe9 (fixed centering)
 
     // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
     // int final_heading_deg = 90.0;
 
-<<<<<<< HEAD
   encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
   //resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
-=======
-    // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
-    // resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
->>>>>>> 4331fe9 (fixed centering)
 
    
    centerToNearestWall();
    //Robot is stationary. Correct its position around the known starting-cell
    //centre while keeping the path in global coordinates.
-  //   resetOdometryFromLidar(
-  //     path[0].x,
-  //     path[0].y,
-  //     START_HEADING_DEG
-  //   );
+    resetOdometryFromLidar(
+      path[0].x,
+      path[0].y,
+      START_HEADING_DEG
+    );
 
-  //   purePursuitPath(path, numberOfWaypoints, final_heading_deg);
+    purePursuitPath(path, numberOfWaypoints, final_heading_deg);
 
    while (true) {};
 }
@@ -300,7 +285,7 @@ float wallCenteringCurvature(float pathCurvature, float headingErrorDeg) {
   const float WALL_PRESENT_MAX_MM = 105.0;    // larger means that side is an opening
   const float WALL_KP = 0.00040;              // curvature correction per mm
   const float MAX_WALL_CURVATURE = 0.0040;    // prevents aggressive steering
-  const float ERROR_DEADBAND_MM = 2.0;
+  const float ERROR_DEADBAND_MM = 5.0;
 
   // Do not wall-follow while pure pursuit is trying to turn.
   const float MAX_STRAIGHT_HEADING_ERROR_DEG = 8.0;
