@@ -80,7 +80,9 @@ const float WEST_RAD = PI + HALF_PI;
 //Floodfill user-variables
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
 const Waypoint startPoint = { 0 * WALL_LENGTH, 3 * WALL_LENGTH};
+float startHeading = SOUTH_RAD;
 const Waypoint goalPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
+// float goalHeading = SOUTH_RAD; //not implementated yet;
 
   void setup() {
     delay(1000);
@@ -100,13 +102,16 @@ const Waypoint goalPoint = {0 * WALL_LENGTH, 4 * WALL_LENGTH};
     Serial.println("Done");
     delay(2000);
     
+    encoder_odometry.setPosition(startPoint.x, startPoint.y);
+    encoder_odometry.setHeading(startHeading);
+    
     path.push_back(startPoint);
     // printPath(path);
     floodfillAppend(path, 0, goalPoint);
-    // printPath(path);
+    printPath(path);
     Waypoint finalPath[path.size()];
     for (int i{0}; i < path.size(); i++) {
-        finalPath[i] = path[i];
+      finalPath[i] = path[i];
     }
 
     purePursuitPath(finalPath, path.size(),0.0);
@@ -951,23 +956,23 @@ void printToOLED(const Waypoint& robotPos) {
 void printStats() {
     // oled.clear();
     // oled.set2X();
-    int x = encoder_odometry.getX();
-    int y = encoder_odometry.getY();
-    int h = encoder_odometry.getH();
+    float x = encoder_odometry.getX();
+    float y = encoder_odometry.getY();
+    float h = encoder_odometry.getH();
     int r = static_cast<int>(x / WALL_LENGTH);
     int c = static_cast<int>(y / WALL_LENGTH);
 
-    oled.print(F("X dist: "));
-    oled.print(x);
-    oled.print(F(" Y dist: "));
-    oled.print(y);
-    oled.print(F(" H: "));
-    oled.println(h);
+    // oled.print(F("X: "));
+    // oled.print(x);
+    // oled.print(F(" Y: "));
+    // oled.print(y);
+    // oled.print(F(" H: "));
+    // oled.println(h);
 
-    // oled.print(F("r: "));
-    // oled.print(r);
-    // oled.print(F("c: "));
-    // oled.println(c);
+    oled.print(F("R: "));
+    oled.print(r);
+    oled.print(F(" C: "));
+    oled.println(c);
     
     // oled.print(F("l: "));
     // oled.print();
