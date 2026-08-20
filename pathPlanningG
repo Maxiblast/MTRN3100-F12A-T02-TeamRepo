@@ -1,0 +1,850 @@
+import cv2
+import numpy as np
+import json
+import os
+import sys
+import subprocess
+import heapq
+import itertools
+
+
+def open_image(path):
+    path = os.path.abspath(path)
+    try:
+        if sys.platform.startswith("win"):
+            os.startfile(path)
+        elif sys.platform == "darwin":
+            subprocess.run(["open", path], check=False)
+        else:
+            subprocess.run(["xdg-open", path], check=False)
+    except Exception as e:
+        print(f"(Could not auto-open {path}: {e}. Open it manually.)")
+
+IMAGE_PATH   = "maze15.jpg"
+START_CELL   = (5, 7)
+GOAL_CELL    = (1, 7)
+START_HEADING = "N"
+END_HEADING   = "E"
+OUTPUT_PREFIX = "maze_run"
+GRID_CELLS    = 9
+
+CELL = 100
+PAD  = 150
+
+CELL_MM = 180.0          
+ROBOT_LENGTH_MM = 105.0  
+
+MM_PER_PX = CELL_MM / CELL
+ROBOT_RADIUS_PX = (ROBOT_LENGTH_MM / 2.0) / MM_PER_PX
+SAFETY_BUFFER_PX = 1.5
+CLEARANCE_PX = ROBOT_RADIUS_PX + SAFETY_BUFFER_PX
+WAYPOINT_EXTRA_PX = 1.0
+
+# --- Cyan Pillar Detection Constants ---
+POST_MIN_AREA_PX = 40
+POST_DILATE_ITERS = 1
+
+CORNER_COLOR_RANGES = {
+    "pink":   [(np.array([160, 25, 90]),  np.array([180, 255, 255])),
+               (np.array([0,   25, 90]),  np.array([8,   255, 255]))],
+    "orange": [(np.array([5,   120, 55]), np.array([18,  255, 255]))],
+    "purple": [(np.array([100, 60, 60]),  np.array([130, 255, 255]))],
+    "yellow": [(np.array([18,  120, 30]), np.array([32,  255, 255]))],
+}
+
+
+def load_and_crop(image_path):
+    img = cv2.imread(image_path)
+    if img is None:
+        raise FileNotFoundError(f"Could not read image: {image_path}")
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, bright = cv2.threshold(gray, 140, 255, cv2.THRESH_BINARY)
+
+    contours, _ = cv2.findContours(bright, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        raise RuntimeError("Could not detect the maze board.")
+
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)
+    x, y, w, h = cv2.boundingRect(contours[0])
+
+    padding = 20
+    x1 = max(0, x - padding)
+    y1 = max(0, y - padding)
+    x2 = min(img.shape[1], x + w + padding)
+    y2 = min(img.shape[0], y + h + padding)
+
+    crop = img[y1:y2, x1:x2]
+    return crop
+
+
+def detect_corner_markers(crop, debug_prefix=None):
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    found = {}
+    for color_name, ranges in CORNER_COLOR_RANGES.items():
+        mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+        for lo, hi in ranges:
+            mask |= cv2.inRange(hsv, lo, hi)
+        kernel = np.ones((5, 5), np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.dilate(mask, kernel, iterations=1)
+        if debug_prefix:
+            cv2.imwrite(f"{debug_prefix}_{color_name}_mask.png", mask)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            continue
+        largest = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(largest) < 50:
+            continue
+        M = cv2.moments(largest)
+        if M["m00"] == 0:
+            continue
+        found[color_name] = (M["m10"] / M["m00"], M["m01"] / M["m00"])
+    return found
+
+
+def log_corner_orientation(crop):
+    markers = detect_corner_markers(crop)
+    if len(markers) < 4:
+        missing = set(CORNER_COLOR_RANGES.keys()) - set(markers.keys())
+        print(f"[corners] Only found {len(markers)}/4 corner markers "
+              f"(missing: {sorted(missing)}). Tune CORNER_COLOR_RANGES if needed.")
+        return markers
+
+    pts = np.array(list(markers.values()))
+    names = list(markers.keys())
+    s = pts.sum(axis=1)
+    diff = pts[:, 0] - pts[:, 1]
+    orientation = {
+        "top-left": names[np.argmin(s)],
+        "top-right": names[np.argmax(diff)],
+        "bottom-right": names[np.argmax(s)],
+        "bottom-left": names[np.argmin(diff)],
+    }
+    print("[corners] Orientation:", orientation)
+    return markers
+
+
+def teal_mask_of(img):
+    b, g, r = cv2.split(img.astype(int))
+    mask = ((b > 110) & (g > 110) & (r < g - 15) & (r < b - 15)).astype(np.uint8) * 255
+    return mask
+
+
+def detect_grid_homography(crop, ncells=GRID_CELLS, cell_px=CELL, pad_px=PAD):
+    teal_mask = teal_mask_of(crop)
+    kernel = np.ones((5, 5), np.uint8)
+    teal_mask = cv2.dilate(teal_mask, kernel, iterations=1)
+
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(teal_mask)
+    pts = centroids[1:]
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    pts = pts[areas > 150]
+
+    if len(pts) < 12:
+        raise RuntimeError("Not enough teal/cyan posts detected to align grid.")
+
+    h, w = crop.shape[:2]
+    margin_guess = 110
+    x0, y0 = margin_guess, margin_guess
+    dx = (w - 2 * margin_guess) / ncells
+    dy = (h - 2 * margin_guess) / ncells
+
+    for _ in range(8):
+        col_idx = np.round((pts[:, 0] - x0) / dx).astype(int)
+        row_idx = np.round((pts[:, 1] - y0) / dy).astype(int)
+        A_x = np.vstack([col_idx, np.ones(len(col_idx))]).T
+        dx, x0 = np.linalg.lstsq(A_x, pts[:, 0], rcond=None)[0]
+        A_y = np.vstack([row_idx, np.ones(len(row_idx))]).T
+        dy, y0 = np.linalg.lstsq(A_y, pts[:, 1], rcond=None)[0]
+
+    for thresh in (40, 25, 15):
+        col_idx = np.round((pts[:, 0] - x0) / dx).astype(int)
+        row_idx = np.round((pts[:, 1] - y0) / dy).astype(int)
+        resid = np.sqrt((pts[:, 0] - (x0 + dx * col_idx)) ** 2 +
+                         (pts[:, 1] - (y0 + dy * row_idx)) ** 2)
+        pts = pts[resid < thresh]
+        for _ in range(5):
+            col_idx = np.round((pts[:, 0] - x0) / dx).astype(int)
+            row_idx = np.round((pts[:, 1] - y0) / dy).astype(int)
+            A_x = np.vstack([col_idx, np.ones(len(col_idx))]).T
+            dx, x0 = np.linalg.lstsq(A_x, pts[:, 0], rcond=None)[0]
+            A_y = np.vstack([row_idx, np.ones(len(row_idx))]).T
+            dy, y0 = np.linalg.lstsq(A_y, pts[:, 1], rcond=None)[0]
+
+    col_idx = np.round((pts[:, 0] - x0) / dx).astype(int)
+    row_idx = np.round((pts[:, 1] - y0) / dy).astype(int)
+    col_idx = np.clip(col_idx, 0, ncells)
+    row_idx = np.clip(row_idx, 0, ncells)
+
+    src = pts.astype(np.float32)
+    dst = np.stack([col_idx * cell_px + pad_px, row_idx * cell_px + pad_px], axis=1).astype(np.float32)
+    H, inlier_mask = cv2.findHomography(src, dst, cv2.RANSAC, 8.0)
+    if H is None:
+        raise RuntimeError("Homography fit failed -- check cyan post detection.")
+
+    proj = cv2.perspectiveTransform(src.reshape(-1, 1, 2), H).reshape(-1, 2)
+    err = np.linalg.norm(proj - dst, axis=1)
+    print(f"[grid] homography fit: {int(inlier_mask.sum())}/{len(src)} inliers, "
+          f"mean reprojection error {err.mean():.1f}px, max {err.max():.1f}px")
+
+    canvas_size = ncells * cell_px + 2 * pad_px
+    warped = cv2.warpPerspective(crop, H, (canvas_size, canvas_size))
+
+    N = ncells + 1
+    return warped, H, N
+
+
+def node(i, j, cell_px=CELL, pad_px=PAD):
+    return (pad_px + i * cell_px, pad_px + j * cell_px)
+
+
+def is_wall(gray, p1, p2, obstacle_mask=None, sobel_mag=None,
+            inner_win=13, outer_lo=20, outer_hi=30, drop=35,
+            thick_frac=0.55, thick_min_run=8,
+            thin_frac=0.80, thin_min_run=2,
+            grad_thresh=25, grad_frac=0.60):
+    x1, y1 = p1
+    x2, y2 = p2
+    length = np.hypot(x2 - x1, y2 - y1)
+    if length == 0:
+        return False
+    ux, uy = (x2 - x1) / length, (y2 - y1) / length
+    px, py = -uy, ux
+    thick_hits = thin_hits = grad_hits = total = 0
+
+    def sample(img, x, y, off):
+        xi, yi = int(round(x + px * off)), int(round(y + py * off))
+        if 0 <= yi < img.shape[0] and 0 <= xi < img.shape[1]:
+            if obstacle_mask is not None and obstacle_mask[yi, xi]:
+                return None
+            return float(img[yi, xi])
+        return None
+
+    for t in np.linspace(0.15, 0.85, 25):
+        x, y = x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
+
+        outer_vals = []
+        for off in list(range(-outer_hi, -outer_lo)) + list(range(outer_lo, outer_hi)):
+            v = sample(gray, x, y, off)
+            if v is not None:
+                outer_vals.append(v)
+        if not outer_vals:
+            continue
+        baseline = np.median(outer_vals)
+
+        inner_vals = [sample(gray, x, y, off) for off in range(-inner_win, inner_win + 1)]
+        total += 1
+
+        run = max_run = 0
+        for v in inner_vals:
+            if v is not None and abs(v - baseline) > drop:
+                run += 1
+                max_run = max(max_run, run)
+            else:
+                run = 0
+        if max_run >= thick_min_run:
+            thick_hits += 1
+        if max_run >= thin_min_run:
+            thin_hits += 1
+
+        if sobel_mag is not None:
+            grad_vals = [sample(sobel_mag, x, y, off) for off in range(-inner_win, inner_win + 1)]
+            grad_vals = [v for v in grad_vals if v is not None]
+            if grad_vals and max(grad_vals) > grad_thresh:
+                grad_hits += 1
+
+    if total == 0:
+        return False
+    return ((thick_hits / total >= thick_frac) or
+            (thin_hits / total >= thin_frac) or
+            (sobel_mag is not None and grad_hits / total >= grad_frac))
+
+
+def compute_sobel_magnitude(gray):
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+    gx = cv2.Sobel(blurred, cv2.CV_32F, 1, 0, ksize=3)
+    gy = cv2.Sobel(blurred, cv2.CV_32F, 0, 1, ksize=3)
+    return cv2.magnitude(gx, gy)
+
+
+def detect_obstacle_mask_and_circles(gray, cell_px=CELL):
+    _, dark_mask = cv2.threshold(cv2.medianBlur(gray, 5), 90, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(dark_mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    obstacle_mask = np.zeros(gray.shape, dtype=np.uint8)
+    circles = []
+    min_area = (cell_px * 0.2) ** 2 * np.pi
+    max_area = (cell_px * 0.6) ** 2 * np.pi
+
+    for cnt in contours:
+        area = cv2.contourArea(cnt)
+        if min_area < area < max_area:
+            perimeter = cv2.arcLength(cnt, True)
+            if perimeter > 0:
+                circularity = 4 * np.pi * area / (perimeter * perimeter)
+                if circularity > 0.60:
+                    (x, y), radius = cv2.minEnclosingCircle(cnt)
+                    circles.append((x, y, radius))
+                    cv2.circle(obstacle_mask, (int(x), int(y)), int(radius + 6), 1, -1)
+
+    return obstacle_mask.astype(bool), circles
+
+
+def detect_post_obstacles(warped, min_area_px=POST_MIN_AREA_PX):
+    gray_shape = warped.shape[:2]
+    teal_mask = teal_mask_of(warped)
+    kernel = np.ones((5, 5), np.uint8)
+    teal_mask = cv2.dilate(teal_mask, kernel, iterations=POST_DILATE_ITERS)
+
+    n, labels, stats, centroids = cv2.connectedComponentsWithStats(teal_mask)
+
+    post_circles = []
+    post_mask = np.zeros(gray_shape, dtype=np.uint8)
+    for i in range(1, n):
+        area = stats[i, cv2.CC_STAT_AREA]
+        if area < min_area_px:
+            continue
+        cx, cy = centroids[i]
+        radius = float(np.sqrt(area / np.pi))
+        post_circles.append((float(cx), float(cy), radius))
+        cv2.circle(post_mask, (int(round(cx)), int(round(cy))), int(radius + 4), 1, -1)
+
+    return post_mask.astype(bool), post_circles
+
+
+def cell_for_point(x, y, ncells, cell_px=CELL, pad_px=PAD):
+    col = int(round((x - pad_px) / cell_px - 0.5))
+    row = int(round((y - pad_px) / cell_px - 0.5))
+    col = min(max(col, 0), ncells - 1)
+    row = min(max(row, 0), ncells - 1)
+    return row, col
+
+
+def detect_walls_and_obstacles(warped, ncells, cell_px=CELL, pad_px=PAD):
+    gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
+    
+    obstacle_mask, circles = detect_obstacle_mask_and_circles(gray, cell_px)
+    post_mask, post_circles = detect_post_obstacles(warped)
+    
+    combined_mask = obstacle_mask | post_mask
+    sobel_mag = compute_sobel_magnitude(gray)
+
+    N = ncells + 1
+    h_edges, v_edges = {}, {}
+    for j in range(N):
+        for i in range(N - 1):
+            h_edges[(i, j)] = is_wall(gray, node(i, j, cell_px, pad_px),
+                                       node(i + 1, j, cell_px, pad_px),
+                                       combined_mask, sobel_mag)
+    for j in range(N - 1):
+        for i in range(N):
+            v_edges[(i, j)] = is_wall(gray, node(i, j, cell_px, pad_px),
+                                       node(i, j + 1, cell_px, pad_px),
+                                       combined_mask, sobel_mag)
+
+    blocked_cells = set()
+    for x, y, r in circles:
+        blocked_cells.add(cell_for_point(x, y, ncells, cell_px, pad_px))
+
+    return h_edges, v_edges, blocked_cells, circles, post_circles
+
+def blocked(h_edges, v_edges, blocked_cells, r, c, direction, ncells, avoid_obstacles=False):
+    if avoid_obstacles and (r, c) in blocked_cells:
+        return True
+    if direction == "N":
+        if r == 0:
+            return True
+        return h_edges.get((c, r), True)
+    if direction == "S":
+        if r == ncells - 1:
+            return True
+        return h_edges.get((c, r + 1), True)
+    if direction == "E":
+        if c == ncells - 1:
+            return True
+        return v_edges.get((c + 1, r), True)
+    if direction == "W":
+        if c == 0:
+            return True
+        return v_edges.get((c, r), True)
+    raise ValueError(direction)
+
+DIRS = {"N": (-1, 0), "S": (1, 0), "E": (0, 1), "W": (0, -1)}
+
+def astar(h_edges, v_edges, blocked_cells, start, goal, ncells, avoid_obstacles=False):
+    def heuristic(a, b):
+        return abs(a[0] - b[0]) + abs(a[1] - b[1])
+
+    open_set = []
+    heapq.heappush(open_set, (0, start))
+
+    came_from = {start: None}
+    g_score = {start: 0}
+
+    while open_set:
+        _, cur = heapq.heappop(open_set)
+
+        if cur == goal:
+            path = [goal]
+            while path[-1] != start:
+                path.append(came_from[path[-1]])
+            path.reverse()
+            return path
+
+        r, c = cur
+        for d, (dr, dc) in DIRS.items():
+            if blocked(h_edges, v_edges, blocked_cells, r, c, d, ncells, avoid_obstacles):
+                continue
+            nxt = (r + dr, c + dc)
+            if avoid_obstacles and nxt in blocked_cells:
+                continue
+            tentative_g = g_score[cur] + 1
+
+            if tentative_g < g_score.get(nxt, float('inf')):
+                came_from[nxt] = cur
+                g_score[nxt] = tentative_g
+                f_score = tentative_g + heuristic(nxt, goal)
+                heapq.heappush(open_set, (f_score, nxt))
+
+    return None
+
+
+def reachable_cells(h_edges, v_edges, blocked_cells, start, ncells, avoid_obstacles=False):
+    from collections import deque
+    seen = {start}
+    q = deque([start])
+    while q:
+        r, c = q.popleft()
+        for d, (dr, dc) in DIRS.items():
+            if blocked(h_edges, v_edges, blocked_cells, r, c, d, ncells, avoid_obstacles):
+                continue
+            nxt = (r + dr, c + dc)
+            if avoid_obstacles and nxt in blocked_cells:
+                continue
+            if nxt not in seen:
+                seen.add(nxt)
+                q.append(nxt)
+    return seen
+
+
+def find_effective_start(h_edges, v_edges, blocked_cells, desired_start, goal, ncells):
+    reach_goal = reachable_cells(h_edges, v_edges, blocked_cells, goal, ncells)
+    if desired_start in reach_goal:
+        return desired_start, False, 0.0
+
+    best, best_d2 = None, float('inf')
+    for cell in reach_goal:
+        d2 = (cell[0] - desired_start[0]) ** 2 + (cell[1] - desired_start[1]) ** 2
+        if d2 < best_d2:
+            best, best_d2 = cell, d2
+    return best, True, best_d2 ** 0.5
+
+
+TURN_ORDER = ["N", "E", "S", "W"]
+
+def path_to_commands(path, start_heading):
+    commands = []
+    heading = start_heading
+    for a, b in zip(path, path[1:]):
+        dr, dc = b[0] - a[0], b[1] - a[1]
+        want = [d for d, v in DIRS.items() if v == (dr, dc)][0]
+        cur_i = TURN_ORDER.index(heading)
+        want_i = TURN_ORDER.index(want)
+        diff = (want_i - cur_i) % 4
+        if diff == 1:
+            commands.append("R")
+        elif diff == 3:
+            commands.append("L")
+        elif diff == 2:
+            commands += ["R", "R"]
+        commands.append("F")
+        heading = want
+    return commands, heading
+
+def turn_to_heading(commands, current_heading, desired_heading):
+    cur_i = TURN_ORDER.index(current_heading)
+    want_i = TURN_ORDER.index(desired_heading)
+    diff = (want_i - cur_i) % 4
+    if diff == 1:
+        commands.append("R")
+    elif diff == 3:
+        commands.append("L")
+    elif diff == 2:
+        commands += ["R", "R"]
+    return commands, desired_heading
+
+
+def wall_segments(h_edges, v_edges, cell_px=CELL, pad_px=PAD):
+    segs = []
+    for (i, j), is_w in h_edges.items():
+        if is_w:
+            segs.append((node(i, j, cell_px, pad_px), node(i + 1, j, cell_px, pad_px)))
+    for (i, j), is_w in v_edges.items():
+        if is_w:
+            segs.append((node(i, j, cell_px, pad_px), node(i, j + 1, cell_px, pad_px)))
+    return segs
+
+
+def _seg_intersect(p1, p2, p3, p4):
+    def ccw(a, b, c):
+        return (c[1] - a[1]) * (b[0] - a[0]) - (b[1] - a[1]) * (c[0] - a[0])
+    d1, d2 = ccw(p3, p4, p1), ccw(p3, p4, p2)
+    d3, d4 = ccw(p1, p2, p3), ccw(p1, p2, p4)
+    if ((d1 > 0 and d2 < 0) or (d1 < 0 and d2 > 0)) and \
+       ((d3 > 0 and d4 < 0) or (d3 < 0 and d4 > 0)):
+        return True
+    return False
+
+
+def _seg_point_dist(p1, p2, pt):
+    x1, y1 = p1
+    x2, y2 = p2
+    px, py = pt
+    dx, dy = x2 - x1, y2 - y1
+    if dx == 0 and dy == 0:
+        return float(np.hypot(px - x1, py - y1))
+    t = max(0.0, min(1.0, ((px - x1) * dx + (py - y1) * dy) / (dx * dx + dy * dy)))
+    return float(np.hypot(px - (x1 + t * dx), py - (y1 + t * dy)))
+
+
+def _seg_seg_dist(p1, p2, p3, p4):
+    if _seg_intersect(p1, p2, p3, p4):
+        return 0.0
+    return min(
+        _seg_point_dist(p1, p2, p3),
+        _seg_point_dist(p1, p2, p4),
+        _seg_point_dist(p3, p4, p1),
+        _seg_point_dist(p3, p4, p2),
+    )
+
+
+def has_line_of_sight(p1, p2, wall_segs, circle_keepouts, wall_margin=CLEARANCE_PX):
+    """circle_keepouts: list of (cx, cy, keepout_radius) -- the exact distance
+    the segment must stay from that circle's center. Callers precompute the
+    keepout per circle (normally r + margin) so this function has no opinion
+    on which circles are obstacles vs. posts, or on any per-pair relaxation."""
+    # 1. Check heavy clearance against walls
+    for w1, w2 in wall_segs:
+        if _seg_seg_dist(p1, p2, w1, w2) < wall_margin:
+            return False
+
+    # 2. Check clearance against every circle (obstacles and posts alike)
+    for cx, cy, keepout in circle_keepouts:
+        if _seg_point_dist(p1, p2, (cx, cy)) < keepout:
+            return False
+
+    return True
+
+
+def circle_tangent_points(cx, cy, r, margin, n=24, extra=WAYPOINT_EXTRA_PX):
+    """Points on the inflated boundary of a circular obstacle (radius r + margin).
+    Used as extra visibility-graph nodes so the shortest path can hug a
+    freestanding obstacle at an angle instead of being confined to the
+    surrounding cell's corners."""
+    R = r + margin + extra
+    return [(cx + R * np.cos(2 * np.pi * k / n), cy + R * np.sin(2 * np.pi * k / n))
+            for k in range(n)]
+
+
+def visibility_shortest_path(coarse_cell_path, start_px, goal_px, wall_segs, circles, post_circles,
+                              cell_px=CELL, pad_px=PAD,
+                              corner_margin_px=CLEARANCE_PX + WAYPOINT_EXTRA_PX,
+                              obs_margin_px=CLEARANCE_PX,
+                              extra_cells=None):
+    m = corner_margin_px
+    nodes = {"start": start_px, "goal": goal_px}
+    node_owner = {}  # node key -> circle idx it was generated from, if any
+    all_cells = set(coarse_cell_path)
+    if extra_cells:
+        all_cells |= set(extra_cells)
+    for (r, c) in all_cells:
+        x0, y0 = node(c, r, cell_px, pad_px)
+        x1, y1 = node(c + 1, r + 1, cell_px, pad_px)
+        for k, corner in enumerate([(x0 + m, y0 + m), (x1 - m, y0 + m),
+                                     (x1 - m, y1 - m), (x0 + m, y1 - m)]):
+            nodes[(r, c, k)] = corner
+
+    # Extra nodes tangent to each freestanding cylindrical obstacle -- lets the
+    # search cut a smooth diagonal path around obstacles rather than only
+    # bending at cell corners.
+    for idx, (cx, cy, r) in enumerate(circles):
+        for k, pt in enumerate(circle_tangent_points(cx, cy, r, obs_margin_px)):
+            key = ("obs", idx, k)
+            nodes[key] = pt
+            node_owner[key] = idx
+
+    # Base keepout radius for every circle: true radius + full clearance margin.
+    base_keepouts = [(cx, cy, r + obs_margin_px) for (cx, cy, r) in circles]
+    post_keepouts = [(cx, cy, r + CLEARANCE_PX) for (cx, cy, r) in post_circles]
+
+    keys = list(nodes.keys())
+    adj = {k: [] for k in keys}
+
+    for a, b in itertools.combinations(keys, 2):
+        pa, pb = nodes[a], nodes[b]
+        owner_a, owner_b = node_owner.get(a), node_owner.get(b)
+        if owner_a is not None and owner_a == owner_b:
+            # Both endpoints are tangent points of the SAME obstacle circle.
+            # The straight chord between them dips a fraction of a pixel
+            # inside the r+margin inflation ring by construction (polygon
+            # sagitta), which would otherwise make a circle reject its own
+            # boundary points. Relax that one circle to its true physical
+            # radius for this pair -- still guaranteed outside the actual
+            # obstacle -- while every other circle/wall/post keeps full margin.
+            keepouts = [(cx, cy, r if idx == owner_a else r + obs_margin_px)
+                        for idx, (cx, cy, r) in enumerate(circles)]
+        else:
+            keepouts = base_keepouts
+        if has_line_of_sight(pa, pb, wall_segs, keepouts + post_keepouts):
+            d = float(np.hypot(pa[0] - pb[0], pa[1] - pb[1]))
+            adj[a].append((d, b))
+            adj[b].append((d, a))
+
+    dist = {k: float('inf') for k in keys}
+    dist["start"] = 0.0
+    prev = {}
+    pq = [(0.0, "start")]
+    visited = set()
+    while pq:
+        d, u = heapq.heappop(pq)
+        if u in visited:
+            continue
+        visited.add(u)
+        if u == "goal":
+            break
+        for w, v in adj[u]:
+            nd_ = d + w
+            if nd_ < dist[v]:
+                dist[v] = nd_
+                prev[v] = u
+                heapq.heappush(pq, (nd_, v))
+
+    if dist["goal"] == float('inf'):
+        return None
+
+    key_path = ["goal"]
+    while key_path[-1] != "start":
+        key_path.append(prev[key_path[-1]])
+    key_path.reverse()
+    return [nodes[k] for k in key_path]
+
+
+def pixel_path_to_mm(pixel_path, cell_px=CELL, pad_px=PAD, cell_mm=180.0, flip_xy=True):
+    pts_mm = [((x - pad_px) / cell_px * cell_mm, (y - pad_px) / cell_px * cell_mm)
+              for x, y in pixel_path]
+    if flip_xy:
+        pts_mm = [(y, x) for x, y in pts_mm]
+    return pts_mm
+
+
+def format_waypoints_c_array(waypoints):
+    lines = []
+    for i, (a, b) in enumerate(waypoints):
+        a_str = f"{a:g}"
+        b_str = f"{b:g}"
+        comma = "," if i < len(waypoints) - 1 else ""
+        lines.append(f"    {{{a_str}, {b_str}}}{comma}")
+    return "\n".join(lines)
+
+
+def path_length_px(pixel_path):
+    return sum(np.hypot(pixel_path[i+1][0]-pixel_path[i][0], pixel_path[i+1][1]-pixel_path[i][1])
+               for i in range(len(pixel_path)-1))
+
+
+def save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, post_circles, out_path,
+                  requested_start=None, effective_start=None,
+                  cell_px=CELL, pad_px=PAD):
+    overlay = warped.copy()
+
+    def nd(i, j):
+        p = node(i, j, cell_px, pad_px)
+        return (int(p[0]), int(p[1]))
+
+    for (i, j), val in h_edges.items():
+        if val:
+            cv2.line(overlay, nd(i, j), nd(i + 1, j), (0, 0, 255), 3)
+    for (i, j), val in v_edges.items():
+        if val:
+            cv2.line(overlay, nd(i, j), nd(i, j + 1), (0, 255, 0), 3)
+
+    if circles:
+        for x, y, r in circles:
+            cv2.circle(overlay, (int(x), int(y)), int(r), (0, 0, 255), -1)
+            cv2.putText(overlay, "OBS", (int(x)-15, int(y)+5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,255,255), 2)
+
+    if post_circles:
+        for x, y, r in post_circles:
+            cv2.circle(overlay, (int(x), int(y)), max(int(r), 3), (255, 255, 0), 2)
+
+    if grid_path:
+        pts_line = [nd(c + 0.5, r + 0.5) for r, c in grid_path]
+        for i in range(len(pts_line) - 1):
+            cv2.line(overlay, pts_line[i], pts_line[i+1], (180, 180, 180), 2)
+
+    if free_path:
+        pts = [(int(x), int(y)) for x, y in free_path]
+        for i in range(len(pts) - 1):
+            cv2.line(overlay, pts[i], pts[i+1], (255, 0, 255), 4)
+        cv2.circle(overlay, pts[0], 10, (0, 200, 0), -1)
+        cv2.circle(overlay, pts[-1], 10, (0, 0, 200), -1)
+
+    if requested_start is not None and requested_start != effective_start:
+        rr, rc = requested_start
+        cv2.circle(overlay, nd(rc + 0.5, rr + 0.5), 9, (255, 255, 255), 2)
+        cv2.putText(overlay, "requested (sealed)", (nd(rc + 0.5, rr + 0.5)[0] - 60, nd(rc + 0.5, rr + 0.5)[1] - 15),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+
+    cv2.imwrite(out_path, overlay)
+
+def main():
+    crop = load_and_crop(IMAGE_PATH)
+    log_corner_orientation(crop)
+
+    warped, H, N = detect_grid_homography(crop, ncells=GRID_CELLS)
+    ncells = N - 1
+    print(f"Detected grid: {N}x{N} nodes -> {ncells}x{ncells} cells")
+
+    input_path = f"{OUTPUT_PREFIX}_input.png"
+    cv2.imwrite(input_path, warped)
+
+    h_edges, v_edges, blocked_cells, circles, post_circles = detect_walls_and_obstacles(warped, ncells)
+    
+    print(f"[posts] detected {len(post_circles)} cyan/teal grid posts. The algorithm will now "
+          f"keep the same {CLEARANCE_PX:.1f}px clearance from them as from any other wall.")
+
+    print(f"\n[clearance] robot length {ROBOT_LENGTH_MM:.0f}mm, cell size {CELL_MM:.0f}mm -> "
+          f"keeping the path at least {CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) "
+          f"from every wall/obstacle/post edge, including at turns. That leaves the robot's physical "
+          f"edge ~{CLEARANCE_PX*MM_PER_PX - ROBOT_LENGTH_MM/2:.1f}mm clear of every wall.")
+
+    effective_start, snapped, snap_dist = find_effective_start(
+        h_edges, v_edges, blocked_cells, START_CELL, GOAL_CELL, ncells)
+
+    if snapped:
+        print(f"\n[warn] Requested START_CELL={START_CELL} has NO legal exits -- it is "
+              f"wall-sealed off from GOAL_CELL={GOAL_CELL}. Auto-snapping to the nearest "
+              f"connected cell {effective_start} ({snap_dist:.1f} cells away).")
+    else:
+        print(f"\nSTART_CELL={START_CELL} confirmed connected to GOAL_CELL -- no snapping needed.")
+
+    grid_path = astar(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells)
+    wall_reachable = reachable_cells(h_edges, v_edges, blocked_cells, effective_start, ncells)
+
+    if grid_path is None:
+        overlay_path = f"{OUTPUT_PREFIX}_overlay.png"
+        save_overlay(warped, ncells, h_edges, v_edges, None, None, circles, post_circles, overlay_path,
+                     requested_start=START_CELL, effective_start=effective_start)
+        combined_path = f"{OUTPUT_PREFIX}_input_vs_output.png"
+        out_img = cv2.imread(overlay_path)
+        combined = cv2.hconcat([warped, out_img])
+        cv2.imwrite(combined_path, combined)
+        print("NO PATH FOUND between", effective_start, "and", GOAL_CELL, "(unexpected)")
+        open_image(combined_path)
+        return
+
+    segs = wall_segments(h_edges, v_edges)
+    sr, sc = effective_start
+    gr, gc = GOAL_CELL
+    start_px = node(sc + 0.5, sr + 0.5)
+    goal_px = node(gc + 0.5, gr + 0.5)
+    
+    # We now pass circles and post_circles distinctly 
+    free_path = visibility_shortest_path(grid_path, start_px, goal_px, segs, circles, post_circles,
+                                          extra_cells=wall_reachable)
+
+    if free_path is None:
+        print("[warn] any-angle visibility search couldn't certify a clean, clearance-respecting "
+              "route for this start/goal. Trying a STRICT obstacle-avoiding grid path instead "
+              "(one that never enters a cell containing an obstacle at all).")
+        safe_grid_path = astar(h_edges, v_edges, blocked_cells, effective_start, GOAL_CELL, ncells,
+                                avoid_obstacles=True)
+        if safe_grid_path is None:
+            obstacle_cells_on_path = [c for c in grid_path if c in blocked_cells]
+            print(f"\n[UNSAFE] No route exists from {effective_start} to {GOAL_CELL} that "
+                  f"avoids every obstacle cell entirely -- every wall-legal corridor is forced "
+                  f"through {obstacle_cells_on_path}, and the any-angle solver could not confirm "
+                  f"{CLEARANCE_PX:.1f}px (~{CLEARANCE_PX*MM_PER_PX:.1f}mm) of clearance around the "
+                  f"obstacle(s) there either. This is right at the edge of what's geometrically "
+                  f"possible for a {ROBOT_LENGTH_MM:.0f}mm robot -- NOT a pathfinding bug.")
+            for (r, c) in obstacle_cells_on_path:
+                for (cx, cy, rad) in circles:
+                    if cell_for_point(cx, cy, ncells) == (r, c):
+                        print(f"  - cell {(r, c)}: obstacle radius {rad*MM_PER_PX:.1f}mm, "
+                              f"needs {(rad+CLEARANCE_PX)*MM_PER_PX:.1f}mm clear radius to pass "
+                              f"through this cell's center, but only "
+                              f"{(CELL/2)*MM_PER_PX:.1f}mm is available to the cell edge.")
+            print("  Fix options: nudge/move that obstacle away from the corridor, reduce "
+                  "ROBOT_LENGTH_MM/SAFETY_BUFFER_PX if the real robot is smaller than modeled, "
+                  "or pick a different start/goal. Proceeding with the obstacle-agnostic grid "
+                  "path below FOR REFERENCE ONLY -- it drives straight through the obstacle "
+                  "cell(s) above and should NOT be sent to the robot as-is.")
+            free_path = [node(c + 0.5, r + 0.5) for r, c in grid_path]
+        else:
+            print("[ok] found a strict obstacle-avoiding grid route -- longer, but guaranteed "
+                  "to never enter a cell that contains an obstacle.")
+            grid_path = safe_grid_path
+            free_path = [node(c + 0.5, r + 0.5) for r, c in grid_path]
+    else:
+        print(f"\n[any-angle] routed through the full wall-reachable region "
+              f"({len(wall_reachable)} cells) so obstacles that don't fit inside a "
+              f"single coarse cell (given the {CLEARANCE_PX:.1f}px clearance) get "
+              f"detoured around via neighboring cells instead of blocking the search.")
+
+    grid_len_cells = len(grid_path) - 1
+    free_len_px = path_length_px(free_path)
+    free_len_cells_equiv = free_len_px / CELL
+    print(f"\nGrid-constrained path: {grid_len_cells} cell-moves")
+    print(f"Any-angle shortest path: {free_len_px:.1f}px "
+          f"(~{free_len_cells_equiv:.2f} cell-widths) through {len(free_path)} points")
+
+    overlay_path = f"{OUTPUT_PREFIX}_overlay.png"
+    save_overlay(warped, ncells, h_edges, v_edges, grid_path, free_path, circles, post_circles, overlay_path,
+                 requested_start=START_CELL, effective_start=effective_start)
+
+    combined_path = f"{OUTPUT_PREFIX}_input_vs_output.png"
+    out_img = cv2.imread(overlay_path)
+    combined = cv2.hconcat([warped, out_img])
+    cv2.imwrite(combined_path, combined)
+
+    print("\nAny-angle path (pixel coords on warped image):")
+    for x, y in free_path:
+        print(f"  ({x:.1f}, {y:.1f})")
+
+    waypoints_mm = pixel_path_to_mm(free_path, cell_mm=CELL_MM, flip_xy=True)
+    print(f"\nWaypoints (mm, {int(CELL_MM)}mm/cell, axes flipped, any-angle turn-points only):")
+    print("{")
+    print(format_waypoints_c_array(waypoints_mm))
+    print("}")
+
+    waypoints_txt_path = f"{OUTPUT_PREFIX}_waypoints_mm.txt"
+    with open(waypoints_txt_path, "w") as f:
+        f.write("{\n")
+        f.write(format_waypoints_c_array(waypoints_mm))
+        f.write("\n}\n")
+
+    commands, final_heading = path_to_commands(grid_path, START_HEADING)
+    commands, final_heading = turn_to_heading(commands, final_heading, END_HEADING)
+    print("\nTurn/forward commands:", "".join(commands))
+
+    result_path = f"{OUTPUT_PREFIX}_result.json"
+    json.dump({
+        "grid_cells": ncells,
+        "requested_start": START_CELL,
+        "effective_start": effective_start,
+        "start_was_snapped": snapped,
+        "snap_distance_cells": snap_dist,
+        "goal": GOAL_CELL,
+        "grid_path": grid_path,
+        "commands": "".join(commands),
+        "free_path_px": free_path,
+        "free_path_length_px": free_len_px,
+        "waypoints_mm": waypoints_mm,
+        "post_circles_px": post_circles,
+    }, open(result_path, "w"), indent=2)
+
+    open_image(combined_path)
+
+if __name__ == "__main__":
+    main()

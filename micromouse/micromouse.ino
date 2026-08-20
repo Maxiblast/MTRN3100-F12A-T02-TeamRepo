@@ -55,38 +55,29 @@ void setup() {
 }
 
 // set to the actual provided starting orientation before each maze
-#define START_HEADING_DEG 0.0
+#define START_HEADING_DEG -180.0
 
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
-    {1350, 990},
-    {1530, 990},
-    {1530, 450},
-    {1350, 450},
-    {1350, 810},
-    {1170, 810},
-    {1170, 630},
-    {990, 630},
-    {990, 990},
-    {1170, 990},
-    {1170, 1170},
-    {630, 1170},
-    {630, 450},
-    {990, 450},
-    {990, 270},
-    {1170, 270},
+    {270, 270},
+    {630, 270},
+    {630, 90},
     {1170, 90},
-    {450, 90},
-    {450, 270}
+    {1170, 270},
+    {810, 270}
   };
 
-  int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-  int final_heading_deg = 90.0;
+  // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
+  // int final_heading_deg = 90.0;
 
-  encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
-  resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
-  purePursuitPath(path, numberOfWaypoints, final_heading_deg);
+  // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
+  // resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
+  // purePursuitPath(path, numberOfWaypoints, final_heading_deg);
+
+  // for (int i = 0; i < sizeof(path); i++) { 
+  //   navigateTo(path[i].x, path[i].y, encoder_odometry.getH());
+  // }
 
   while (true) {};
 }
@@ -236,7 +227,7 @@ void navigateTo(float tx, float ty, float th_deg) {
 }
 
 void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading_deg) {
-  const float LOOKAHEAD = 50.0;
+  const float LOOKAHEAD = 10.0;
   const float TARGET_WHEEL_SPEED = 10.0;
   const float GOAL_TOLERANCE = 5.0;
 
@@ -282,7 +273,7 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float seg_len = sqrt(seg_dx * seg_dx + seg_dy * seg_dy);
 
     // if heading change is too big for curvature to react to (e.g. <90)
-    const float TURN_THRESHOLD_DEG = 100.0;
+    const float TURN_THRESHOLD_DEG = 45;
     float seg_heading_deg = atan2(seg_dy, seg_dx) * 180.0 / PI;
     float current_heading_deg = rh * 180.0 / PI;
     float heading_gap = seg_heading_deg - current_heading_deg;
