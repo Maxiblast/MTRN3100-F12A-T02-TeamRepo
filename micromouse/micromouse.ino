@@ -85,22 +85,18 @@ void setup() {
 void loop() {
   // Waypoints are already given in the maze's global frame, use as-is
   Waypoint path[] = {
-    {810, 450},
-    {663, 597},
-    {597, 777},
-    {483, 957},
-    {303, 1203},
-    {270, 1350}
+    {0, 0},
+    {-360, 0}
   };
 
-    // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-    // int final_heading_deg = 90.0;
+    int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
+    int final_heading_deg = 90.0;
 
-  encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
+  // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
   //resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
 
    
-   centerToNearestWall();
+  //  centerToNearestWall();
    //Robot is stationary. Correct its position around the known starting-cell
    //centre while keeping the path in global coordinates.
     resetOdometryFromLidar(
@@ -114,7 +110,7 @@ void loop() {
    while (true) {};
 }
 
-float imuHeadingOffsetRad = -180;
+float imuHeadingOffsetRad = 0;
 
 void setupLidars() {
   // Hold every VL6180X disabled so they do not all answer at address 0x29.
@@ -281,15 +277,15 @@ bool resetOdometryFromLidar(
 }
 
 float wallCenteringCurvature(float pathCurvature, float headingErrorDeg) {
-  const float TARGET_SIDE_DISTANCE_MM = 55.0; // (180 mm cell - 80 mm robot) / 2
+  const float TARGET_SIDE_DISTANCE_MM = 100.0; // (180 mm cell - 80 mm robot) / 2
   const float WALL_PRESENT_MAX_MM = 105.0;    // larger means that side is an opening
-  const float WALL_KP = 0.00040;              // curvature correction per mm
-  const float MAX_WALL_CURVATURE = 0.0040;    // prevents aggressive steering
-  const float ERROR_DEADBAND_MM = 5.0;
+  const float WALL_KP = 0.00080;              // curvature correction per mm
+  const float MAX_WALL_CURVATURE = 0.0080;    // prevents aggressive steering
+  const float ERROR_DEADBAND_MM = 2.0;
 
   // Do not wall-follow while pure pursuit is trying to turn.
-  const float MAX_STRAIGHT_HEADING_ERROR_DEG = 8.0;
-  const float MAX_STRAIGHT_PATH_CURVATURE = 0.0020;
+  const float MAX_STRAIGHT_HEADING_ERROR_DEG = 10.0;
+  const float MAX_STRAIGHT_PATH_CURVATURE = 0.0060;
 
   static float smoothedCorrection = 0.0;
 
@@ -453,10 +449,7 @@ bool centerToNearestWall() { //will use lidar to scan the local minimum saves sa
       }
     }
 
-    /*
-     * Once a minimum has been found, an increasing reading
-     * means the robot has passed the perpendicular heading.
-     */
+   
     else {
       if (current > minimumDistance + NOISE_MM) {
         risesAfterMinimum++;
