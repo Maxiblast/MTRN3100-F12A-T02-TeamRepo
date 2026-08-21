@@ -86,7 +86,7 @@ const float WEST_DEG = 270.0;
 const int8_t FF_GOAL_TOLERANCE = 20; //unit is mm. 
 const Waypoint startPoint = { 2 * WALL_LENGTH, 0 * WALL_LENGTH};
 float startHeading = SOUTH_RAD;
-const Waypoint goalPoint = {5 * WALL_LENGTH, 1 * WALL_LENGTH};   //5,1 //8,4
+const Waypoint goalPoint = {6 * WALL_LENGTH, 3 * WALL_LENGTH};   //5,1 //8,4
 // float goalHeading = SOUTH_RAD; //not implementated yet;
 
 void setup() {
@@ -101,17 +101,16 @@ void setup() {
 
   setupLidars();
   mpu.begin();
-  Serial.println(F("Calibrating IMU, keep still..."));
+  // Serial.println(F("Calibrating IMU, keep still..."));
   delay(1000);
   mpu.calcOffsets();
 
   encoder_odometry.setPosition(startPoint.x, startPoint.y);
   encoder_odometry.setHeading(startHeading); 
 
-  Serial.println("Done");
+  // Serial.println("Done");
   delay(2000);
 
-  
   // path.push_back(startPoint);
   //   // printPath(path);
   // printToOLED(startPoint);
@@ -137,92 +136,13 @@ void setup() {
   }
 
   purePursuitPath(finalPath, path.size(),0.0);
-
-
-
-
-    //this works but search doesnt
-    // // 2,0
-    // Waypoint currPoint = startPoint;  
-    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-    // printToOLED(currPoint);
-    // currPoint.x += WALL_LENGTH; 
-    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
-
-    // //3,0
-    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-    // printToOLED(currPoint);
-    // currPoint.x += WALL_LENGTH; 
-    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
-
-    // //4,0
-    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-    // printToOLED(currPoint);
-    // currPoint.x += WALL_LENGTH; 
-    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
-
-    // //5,0
-    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-    // printToOLED(currPoint);
-    // currPoint.y += WALL_LENGTH; 
-    // navigateTo(currPoint.x, currPoint.y, encoder_odometry.getH());
-
-    // //5,1
-    // updateMazeUsingLidar(currPoint, encoder_odometry.getH());
-    // printToOLED(currPoint);
-
-
-
-
-    // Waypoint finalPath[path.size()];
-    // for (int i{0}; i < path.size(); i++) {
-    //   finalPath[i] = path[i];
-    // }
-
-    // purePursuitPath(finalPath, path.size(),0.0);
 }
 
 // set to the actual provided starting orientation before each maze
 #define START_HEADING_DEG 0.0
 
 void loop() {
-  // printLidarSerial();
-  // delay(500);
-  // // Waypoints are already given in the maze's global frame, use as-is
-  // Waypoint path[] = {
-  //   {1350, 990},
-  //   {1530, 990},
-  //   {1530, 450},
-  //   {1350, 450},
-  //   {1350, 810},
-  //   {1170, 810},
-  //   {1170, 630},
-  //   {990, 630},
-  //   {990, 990},
-  //   {1170, 990},
-  //   {1170, 1170},
-  //   {630, 1170},
-  //   {630, 450},
-  //   {990, 450},
-  //   {990, 270},
-  //   {1170, 270},
-  //   {1170, 90},
-  //   {450, 90},
-  //   {450, 270}
-  // };
-
-  // int numberOfWaypoints = sizeof(path) / sizeof(path[0]);
-  // int final_heading_deg = 90.0;
-
-  // encoder_odometry.setPosition(path[0].x, path[0].y);    // start where this path says we start
-  // resyncHeadingToKnown(START_HEADING_DEG * PI / 180.0);  // and facing where we're told we start
-
-  // // Face perpendicular to whichever wall is currently closest.
-  // centerToNearestWall();
-
-  // purePursuitPath(path, numberOfWaypoints, final_heading_deg);
-
-  // while (true) {};
+  
 }
 
 float imuHeadingOffsetRad = 0;
@@ -325,12 +245,13 @@ float wallCenteringCurvature(float pathCurvature, float headingErrorDeg) {
   // the steering from one loop to the next.
   smoothedCorrection = 0.70 * smoothedCorrection + 0.30 * requestedCorrection;
 
-  Serial.print("Wall L=");
-  if (leftWall) Serial.print(leftDistance); else Serial.print("OPEN");
-  Serial.print(" R=");
-  if (rightWall) Serial.print(rightDistance); else Serial.print("OPEN");
-  Serial.print(" correction=");
-  Serial.println(smoothedCorrection, 5);
+  // //serial Stuff
+  // Serial.print("Wall L=");
+  // if (leftWall) Serial.print(leftDistance); else Serial.print("OPEN");
+  // Serial.print(" R=");
+  // if (rightWall) Serial.print(rightDistance); else Serial.print("OPEN");
+  // Serial.print(" correction=");
+  // Serial.println(smoothedCorrection, 5);
 
   return smoothedCorrection;
 }
@@ -342,102 +263,102 @@ void setCenteringTurn(int direction, int pwm) {
   motor2.setPWM(direction * pwm);
 }
 
-bool centerToNearestWall() {
-  const int TURN_PWM = 42;
-  const float NOISE_MM = 2.0;
-  const int REQUIRED_RISES = 3;
-  const unsigned long MAX_TURN_TIME_MS = 7000;
+// bool centerToNearestWall() {
+//   const int TURN_PWM = 42;
+//   const float NOISE_MM = 2.0;
+//   const int REQUIRED_RISES = 3;
+//   const unsigned long MAX_TURN_TIME_MS = 7000;
 
-  // First choose the LiDAR that can currently see the closest valid wall.
-  int closestSensor = -1;
-  float closestDistance = 9999.0;
-  for (int i = 0; i < 3; i++) {
-    float distance = filteredLidarReading(i);
-    Serial.print("LiDAR ");
-    Serial.print(i);
-    Serial.print(" = ");
-    Serial.println(distance);
+//   // First choose the LiDAR that can currently see the closest valid wall.
+//   int closestSensor = -1;
+//   float closestDistance = 9999.0;
+//   for (int i = 0; i < 3; i++) {
+//     float distance = filteredLidarReading(i);
+//     Serial.print("LiDAR ");
+//     Serial.print(i);
+//     Serial.print(" = ");
+//     Serial.println(distance);
 
-    if (distance < closestDistance) {
-      closestDistance = distance;
-      closestSensor = i;
-    }
-  }
+//     if (distance < closestDistance) {
+//       closestDistance = distance;
+//       closestSensor = i;
+//     }
+//   }
 
-  if (closestSensor < 0 || closestDistance >= 9999.0) {
-    Serial.println("No valid wall found - centering skipped");
-    return false;
-  }
+//   if (closestSensor < 0 || closestDistance >= 9999.0) {
+//     Serial.println("No valid wall found - centering skipped");
+//     return false;
+//   }
 
-  Serial.print("Centering with LiDAR ");
-  Serial.println(closestSensor);
+//   Serial.print("Centering with LiDAR ");
+//   Serial.println(closestSensor);
 
-  int direction = 1;
-  bool directionWasSwitched = false;
-  bool distanceHasDecreased = false;
-  int initialRises = 0;
-  int risesAfterMinimum = 0;
-  float previous = closestDistance;
-  float minimumDistance = closestDistance;
-  unsigned long startTime = millis();
+//   int direction = 1;
+//   bool directionWasSwitched = false;
+//   bool distanceHasDecreased = false;
+//   int initialRises = 0;
+//   int risesAfterMinimum = 0;
+//   float previous = closestDistance;
+//   float minimumDistance = closestDistance;
+//   unsigned long startTime = millis();
 
-  setCenteringTurn(direction, TURN_PWM);
+//   setCenteringTurn(direction, TURN_PWM);
 
-  while (millis() - startTime < MAX_TURN_TIME_MS) {
-    float current = filteredLidarReading(closestSensor);
-    updateOdometry();
+//   while (millis() - startTime < MAX_TURN_TIME_MS) {
+//     float current = filteredLidarReading(closestSensor);
+//     updateOdometry();
 
-    if (current >= 9999.0) {
-      delay(10);
-      continue;
-    }
+//     if (current >= 9999.0) {
+//       delay(10);
+//       continue;
+//     }
 
-    Serial.print("Center distance = ");
-    Serial.println(current);
+//     Serial.print("Center distance = ");
+//     Serial.println(current);
 
-    if (current < minimumDistance - NOISE_MM) {
-      minimumDistance = current;
-      distanceHasDecreased = true;
-      risesAfterMinimum = 0;
-    }
+//     if (current < minimumDistance - NOISE_MM) {
+//       minimumDistance = current;
+//       distanceHasDecreased = true;
+//       risesAfterMinimum = 0;
+//     }
 
-    if (!distanceHasDecreased) {
-      // If the first chosen direction immediately moves away from the wall,
-      // reverse once and continue searching for the minimum.
-      if (current > previous + NOISE_MM) initialRises++;
-      else initialRises = 0;
+//     if (!distanceHasDecreased) {
+//       // If the first chosen direction immediately moves away from the wall,
+//       // reverse once and continue searching for the minimum.
+//       if (current > previous + NOISE_MM) initialRises++;
+//       else initialRises = 0;
 
-      if (initialRises >= 2 && !directionWasSwitched) {
-        direction = -direction;
-        directionWasSwitched = true;
-        initialRises = 0;
-        setCenteringTurn(direction, TURN_PWM);
-        delay(80);  // allow the drivetrain to change direction
-      }
-    } else {
-      // A few consecutive readings above the best value mean we have passed
-      // the perpendicular point. Requiring three rejects single noisy samples.
-      if (current > minimumDistance + NOISE_MM) risesAfterMinimum++;
-      else risesAfterMinimum = 0;
+//       if (initialRises >= 2 && !directionWasSwitched) {
+//         direction = -direction;
+//         directionWasSwitched = true;
+//         initialRises = 0;
+//         setCenteringTurn(direction, TURN_PWM);
+//         delay(80);  // allow the drivetrain to change direction
+//       }
+//     } else {
+//       // A few consecutive readings above the best value mean we have passed
+//       // the perpendicular point. Requiring three rejects single noisy samples.
+//       if (current > minimumDistance + NOISE_MM) risesAfterMinimum++;
+//       else risesAfterMinimum = 0;
 
-      if (risesAfterMinimum >= REQUIRED_RISES) {
-        motor1.setPWM(0);
-        motor2.setPWM(0);
-        updateOdometry();
-        Serial.println("Wall centred");
-        return true;
-      }
-    }
+//       if (risesAfterMinimum >= REQUIRED_RISES) {
+//         motor1.setPWM(0);
+//         motor2.setPWM(0);
+//         updateOdometry();
+//         Serial.println("Wall centred");
+//         return true;
+//       }
+//     }
 
-    previous = current;
-    delay(10);
-  }
+//     previous = current;
+//     delay(10);
+//   }
 
-  motor1.setPWM(0);
-  motor2.setPWM(0);
-  Serial.println("Centering timed out");
-  return false;
-}
+//   motor1.setPWM(0);
+//   motor2.setPWM(0);
+//   Serial.println("Centering timed out");
+//   return false;
+// }
 
 void updateOdometry() {
   mpu.update();
@@ -452,19 +373,19 @@ void resyncHeadingToKnown(float knownHeadingRad) {
   imuHeadingOffsetRad = mpu.getAngleZ() * PI / 180.0 - knownHeadingRad;
 }
 
-void serialPrint() {
-  Serial.print("ODOM:\t\t X = ");
-  Serial.print(encoder_odometry.getX());
-  Serial.print(",\t\t Y = ");
-  Serial.print(encoder_odometry.getY());
-  Serial.print(",\t\t H = ");
-  Serial.print(encoder_odometry.getH());
-  Serial.print(",\t\t DeltaLeft = ");
-  Serial.print(encoder_odometry.getDeltaLeft());
-  Serial.print(",\t\t DeltaRight = ");
-  Serial.print(encoder_odometry.getDeltaRight());
-  Serial.println();
-}
+// void serialPrint() {
+//   Serial.print("ODOM:\t\t X = ");
+//   Serial.print(encoder_odometry.getX());
+//   Serial.print(",\t\t Y = ");
+//   Serial.print(encoder_odometry.getY());
+//   Serial.print(",\t\t H = ");
+//   Serial.print(encoder_odometry.getH());
+//   Serial.print(",\t\t DeltaLeft = ");
+//   Serial.print(encoder_odometry.getDeltaLeft());
+//   Serial.print(",\t\t DeltaRight = ");
+//   Serial.print(encoder_odometry.getDeltaRight());
+//   Serial.println();
+// }
 
 void driveForward(float distance) {
   float startLeft = encoder1.getRotation();
@@ -481,7 +402,7 @@ void driveForward(float distance) {
     float avgRot = (leftRot + rightRot) / 2.0;
 
     updateOdometry();  // global pose
-    serialPrint();
+    // serialPrint();
 
     int pwm = controller.compute(avgRot);
 
@@ -516,12 +437,13 @@ void turnToHeading(float target_deg) {
   if (delta > 175.0) delta -= 360.0;
   if (delta < -175.0) delta += 360.0;
 
-  Serial.print("turnToHeading: target=");
-  Serial.print(target_deg);
-  Serial.print(" current=");
-  Serial.print(current_deg);
-  Serial.print(" delta=");
-  Serial.println(delta);
+  // //serial stuff
+  // Serial.print("turnToHeading: target=");
+  // Serial.print(target_deg);
+  // Serial.print(" current=");
+  // Serial.print(current_deg);
+  // Serial.print(" delta=");
+  // Serial.println(delta);
 
   if (abs(delta) < 2.0) return;  // already close enough
 
@@ -539,12 +461,13 @@ void turnToHeading(float target_deg) {
 
     int pwm = controller.compute(avg);
 
-    Serial.print("avg=");
-    Serial.print(avg);
-    Serial.print(" error=");
-    Serial.print(controller.error);
-    Serial.print(" pwm=");
-    Serial.println(pwm);
+    //serial stuff
+    // Serial.print("avg=");
+    // Serial.print(avg);
+    // Serial.print(" error=");
+    // Serial.print(controller.error);
+    // Serial.print(" pwm=");
+    // Serial.println(pwm);
 
     if (delta > 0) {
       motor1.setPWM(abs(pwm));
@@ -601,12 +524,12 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     float rh = encoder_odometry.getH();
 
 
-    //prints odom ever 2 seconds.
-    currTime = millis();
-    if (currTime - prevTime > 2000) {
-      printStats();
-      prevTime = currTime;
-    }
+    // //printStats on odom ever 2 seconds.
+    // currTime = millis();
+    // if (currTime - prevTime > 2000) {
+    //   printStats();
+    //   prevTime = currTime;
+    // }
 
     // final goal is the last waypoint
     float final_x = waypoints[num_waypoints - 1].x;
@@ -701,19 +624,19 @@ void purePursuitPath(Waypoint* waypoints, int num_waypoints, float final_heading
     motor1.setPWM(-left_pwm);
     motor2.setPWM(right_pwm);
 
-    serialPrint();
-    Serial.print("L: target=");
-    Serial.print(left_wheel_speed);
-    Serial.print(" measured=");
-    Serial.print(leftVelocityController.getMeasuredVelocity());
-    Serial.print(" pwm=");
-    Serial.print(left_pwm);
-    Serial.print("\t\tR: target=");
-    Serial.print(right_wheel_speed);
-    Serial.print(" measured=");
-    Serial.print(rightVelocityController.getMeasuredVelocity());
-    Serial.print(" pwm=");
-    Serial.println(right_pwm);
+    // serialPrint();
+    // Serial.print("L: target=");
+    // Serial.print(left_wheel_speed);
+    // Serial.print(" measured=");
+    // Serial.print(leftVelocityController.getMeasuredVelocity());
+    // Serial.print(" pwm=");
+    // Serial.print(left_pwm);
+    // Serial.print("\t\tR: target=");
+    // Serial.print(right_wheel_speed);
+    // Serial.print(" measured=");
+    // Serial.print(rightVelocityController.getMeasuredVelocity());
+    // Serial.print(" pwm=");
+    // Serial.println(right_pwm);
     delay(10);
   }
 
@@ -863,22 +786,20 @@ void floodfillAppend(Vector<Waypoint>& path, int currIndex, Waypoint goalCell) {
 //     }
 // }
 
-void printPath(const Vector<Waypoint>& pathList) {
-    Serial.print(F("Total Elements: "));
-    Serial.println(pathList.size());
-    Serial.println(F("Generated Waypoint Path:"));
+// void printPath(const Vector<Waypoint>& pathList) {
+//     Serial.print(F("Total Elements: "));
+//     Serial.println(pathList.size());
+//     Serial.println(F("Generated Waypoint Path:"));
 
-    for (size_t i = 0; i < pathList.size(); ++i) {
-        Serial.print("(");
-        Serial.print(pathList[i].x);
-        Serial.print(",");
-        Serial.print(pathList[i].y);
-        Serial.print(")");
-    }
-    Serial.println();
-}
-
-
+//     for (size_t i = 0; i < pathList.size(); ++i) {
+//         Serial.print("(");
+//         Serial.print(pathList[i].x);
+//         Serial.print(",");
+//         Serial.print(pathList[i].y);
+//         Serial.print(")");
+//     }
+//     Serial.println();
+// }
 
 /*
 isAtTarget: 
@@ -908,8 +829,8 @@ void search(const Waypoint& begin, const Waypoint endPoint, int& visited) {
     updateMazeUsingLidar(currPoint, encoder_odometry.getH());
     visited++;
     printToOLED(currPoint, visited);
-    Serial.print("ITS HEREEEEEE");
-    Serial.println(visited);
+    // Serial.print("ITS HEREEEEEE");
+    // Serial.println(visited);
     // printStats();
     Waypoint nextPoint = floodfillNext(path, endPoint);
     // printPointOLED(nextPoint);
@@ -954,94 +875,17 @@ float headingFromPoints(Waypoint startPoint, Waypoint nextPoint) {
   return heading_rad;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// void searchRun(const Waypoint& begin, const Waypoint endPoint) {
-// // // search run back to start 
-//   encoder_odometry.setPosition(startPoint.x, startPoint.y);
-//   encoder_odometry.setHeading(startHeading); 
-
-//   Serial.println(F("test1"));
-//   currIndex = 0;
-//   path.empty();
-//   path.push_back(begin);
-//   floodfillAppend(path, currIndex, endPoint);
-//   // printPathOLED(path);
-//   delay(1000);
-//   Serial.println(F("test2"));
-//   // bool value = isAtTarget(path[currIndex], endPoint, FF_GOAL_TOLERANCE) == false;
-//   // oled.print("isAtTarget: ");
-//   // oled.println(value);
-
-//   while (isAtTarget(path[currIndex], endPoint, FF_GOAL_TOLERANCE) == false) {
-//     Serial.println(F("test3"));
-//     // centerOnClosestSurface();
-//     //updateOdomUsingLidar
-//     updateMazeUsingLidar(path[currIndex], encoder_odometry.getH());
-//     printToOLED(path[currIndex]);
-//     int8_t r = static_cast<int>(path[currIndex].x / WALL_LENGTH);
-//     int8_t c = static_cast<int>(path[currIndex].y / WALL_LENGTH);
-//     int8_t nr = static_cast<int>(path[currIndex + 1].x / WALL_LENGTH);
-//     int8_t nc = static_cast<int>(path[currIndex + 1].y / WALL_LENGTH);
-
-//     //if wall then recalculate else keep moving.
-//     if (isWallPresent(r,c,nr,nc)) {  //will the lidar detect step at the begining be enough ?????? this check assumes walls have already been detected.
-//         Serial.println(F("test4"));
-//         int lastIndex = path.size() - 1; //index of last elem in path. 
-//         for (int i{lastIndex}; i > currIndex; i--) {  //removes all cells after current cell. 
-//           path.pop_back();     
-//         }
-//         floodfillAppend(path, currIndex, begin); //appends next steps to get to goal
-//         printPathOLED(path);
-//     }
-
-//     // Discrete direction calculation without atan2() or float math
-//     int dx = nr - r;
-//     int dy = nc - c;
-//     float heading_rad = 0.0f;
-
-//     if (dx > 0)       heading_rad = 0.0f;          // SOUTH
-//     else if (dx < 0)  heading_rad = 180.0f;        // NORTH
-//     else if (dy > 0)  heading_rad = 90.0f;       // EAST
-//     else if (dy < 0)  heading_rad = 270.0f;      // WEST
-
-//     // if (dx > 0)       heading_rad = 0.0f;          // East
-//     // else if (dx < 0)  heading_rad = PI;            // West
-//     // else if (dy > 0)  heading_rad = HALF_PI;       // North
-//     // else if (dy < 0)  heading_rad = -HALF_PI;      // South
-    
-//     navigateTo(path[currIndex + 1].x, path[currIndex + 1].y, heading_rad);  
-//     currIndex++;
+// // //takes path and reverses it. Or should I make a function that just drives path in reverse for less mem?
+// void reversePath(Vector<Waypoint>& path){
+//   int tailIndex = path.size() - 1;
+//   int middleIndex = (path.size() + 1) / 2; //the + 1 is to round up the integer division to get the average rounded up.
+//   for (int i{0}; i < middleIndex; i++) {
+//     Waypoint curr = path[i];
+//     path[i] = path[tailIndex];
+//     path[tailIndex] = curr;
+//     tailIndex--;
 //   }
 // }
-
-// //takes path and reverses it. Or should I make a function that just drives path in reverse for less mem?
-void reversePath(Vector<Waypoint>& path){
-  int tailIndex = path.size() - 1;
-  int middleIndex = (path.size() + 1) / 2; //the + 1 is to round up the integer division to get the average rounded up.
-  for (int i{0}; i < middleIndex; i++) {
-    Waypoint curr = path[i];
-    path[i] = path[tailIndex];
-    path[tailIndex] = curr;
-    tailIndex--;
-  }
-}
 
 // void updateOdomUsingLidar() {
 
@@ -1125,75 +969,75 @@ void printToOLED(const Waypoint& robotPos, int visited) {
     }
 }
 
-void printStats() {  //seems to be consistently off by one in y direction? could also just be rounding error.
-    // oled.clear();
-    // oled.set2X();
-    float x = encoder_odometry.getX();
-    float y = encoder_odometry.getY();
-    float h = encoder_odometry.getH();
-    int r = static_cast<int>(x / WALL_LENGTH);
-    int c = static_cast<int>(y / WALL_LENGTH);
+// void printStats() {  //seems to be consistently off by one in y direction? could also just be rounding error.
+//     // oled.clear();
+//     // oled.set2X();
+//     float x = encoder_odometry.getX();
+//     float y = encoder_odometry.getY();
+//     float h = encoder_odometry.getH();
+//     int r = static_cast<int>(x / WALL_LENGTH);
+//     int c = static_cast<int>(y / WALL_LENGTH);
 
-    // oled.print(F("X: "));
-    // oled.print(x);
-    // oled.print(F(" Y: "));
-    // oled.print(y);
-    // oled.print(F(" H: "));
-    // oled.printn(h);
+//     // oled.print(F("X: "));
+//     // oled.print(x);
+//     // oled.print(F(" Y: "));
+//     // oled.print(y);
+//     // oled.print(F(" H: "));
+//     // oled.printn(h);
 
-    oled.print(F("R: "));
-    oled.print(r);
-    oled.print(F(" C: "));
-    oled.print(c);
-    oled.print(F(" H: "));
-    oled.println(h);
+//     oled.print(F("R: "));
+//     oled.print(r);
+//     oled.print(F(" C: "));
+//     oled.print(c);
+//     oled.print(F(" H: "));
+//     oled.println(h);
 
     
-    // oled.print(F("l: "));
-    // oled.print();
-    // oled.print(F("f: "));
-    // oled.print();
-    // oled.print(F("r: "));
-    // oled.print();
-    // oled.println();
-    // oled.set1X();
-}
+//     // oled.print(F("l: "));
+//     // oled.print();
+//     // oled.print(F("f: "));
+//     // oled.print();
+//     // oled.print(F("r: "));
+//     // oled.print();
+//     // oled.println();
+//     // oled.set1X();
+// }
 
 inline int coordToGrid(float val) {
     return static_cast<int>(val / WALL_LENGTH + 0.5f);
 }
 
 
-void printPathOLED(const Vector<Waypoint>& pathList) {
-    oled.clear();
-    oled.print(F("ELEMENTS: "));
-    oled.println(pathList.size());
+// void printPathOLED(const Vector<Waypoint>& pathList) {
+//     oled.clear();
+//     oled.print(F("ELEMENTS: "));
+//     oled.println(pathList.size());
 
-    for (size_t i = 0; i < pathList.size(); ++i) {
-        oled.print("(");
-        oled.print(pathList[i].x);
-        oled.print(",");
-        oled.print(pathList[i].y);
-        oled.println(")");
-    }
-}
+//     for (size_t i = 0; i < pathList.size(); ++i) {
+//         oled.print("(");
+//         oled.print(pathList[i].x);
+//         oled.print(",");
+//         oled.print(pathList[i].y);
+//         oled.println(")");
+//     }
+// }
 
-void printLidarSerial(){
-  uint16_t frontDist = filteredLidarReading(FRONT_LIDAR);
-  uint16_t leftDist  = filteredLidarReading(LEFT_LIDAR);
-  uint16_t rightDist = filteredLidarReading(RIGHT_LIDAR);
+// void printLidarSerial(){
+//   uint16_t frontDist = filteredLidarReading(FRONT_LIDAR);
+//   uint16_t leftDist  = filteredLidarReading(LEFT_LIDAR);
+//   uint16_t rightDist = filteredLidarReading(RIGHT_LIDAR);
 
-  Serial.print("Left: ");
-  Serial.print(leftDist);
-  Serial.print(" Front: ");
-  Serial.print(frontDist);
-  Serial.print(" Right: ");
-  Serial.println(rightDist);
-}
+//   Serial.print("Left: ");
+//   Serial.print(leftDist);
+//   Serial.print(" Front: ");
+//   Serial.print(frontDist);
+//   Serial.print(" Right: ");
+//   Serial.println(rightDist);
+// }
 
-void printPointOLED(Waypoint point) {
-  oled.print("X: ");
-  oled.print(point.x);
-  oled.print("Y: ");
-  oled.println(point.y);
-}
+// void printPointOLED(Waypoint point) {
+//   oled.print("X: ");
+//   oled.print(point.x);
+//   oled.print("Y: ");
+//   oled.println(point.y);
+// }
